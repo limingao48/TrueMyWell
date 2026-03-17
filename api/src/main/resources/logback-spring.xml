@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--是否开启debug模式(在首次配置时应该开始DEBUG模式看是否发生错误以及错误详情)-->
+<configuration debug="true">
+    <!--引入application配置信息：
+    1. 变量名设置为monitorUrl
+    2.变量的值为配置文件中的app.monitor.url.
+    3.如果配置文件中未设置，取默认值localhost-->
+    <springProperty scope="context" name="monitorUrl" source="app.monitor.url"
+                    defaultValue="localhost"/>
+
+    <!--引入内置文件过滤器，共享该过滤器的配置-->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <!--    定义一个appender，起个名字为CONSOLE，对应处理的类为：ch.qos.logback.core.ConsoleAppender-->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+        </encoder>
+        <!--在此基础上，添加自定义过滤器，-->
+        <filter class="club.yunzhi.api.workReview.logger.LoggerConsoleFilter"/>
+    </appender>
+
+    <!--引用第三方appender, 起名为batchHttp，对应的处理类为-->
+    <appender name="batchHttp" class="club.yunzhi.api.workReview.logger.LogHttpAppender">
+        <endpointUrl>${monitorUrl}</endpointUrl>
+        <!--定义输出格式JSON-->
+        <layout class="ch.qos.logback.contrib.json.classic.JsonLayout">
+            <jsonFormatter
+                    class="ch.qos.logback.contrib.jackson.JacksonJsonFormatter">
+            </jsonFormatter>
+        </layout>
+    </appender>
+
+    <!--引入自带appender, 用于将日志写入文件-->
+    <appender name="JSONFILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>application.log</file>
+        <!-- Filter everything above the given level (only applies if the logger issues lower levels): -->
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <!--写入的等级为debug-->
+            <level>DEBUG</level>
+        </filter>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- rollover monthly -->
+            <fileNamePattern>%d{yyyy-MM}/application.%i.log</fileNamePattern>
+            <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                <!-- or whenever the file size reaches 100MB -->
+                <maxFileSize>100MB</maxFileSize>
+            </timeBasedFileNamingAndTriggeringPolicy>
+            <!--
+                 Keep at most 1.2GB (since each file has at most 100MB)
+                 or 12 months (since we rollover monthly)
+                 whatever comes first
+            -->
+            <maxHistory>12</maxHistory>
+        </rollingPolicy>
+        <!-- Configure the JSON output -->
+        <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+            <layout class="ch.qos.logback.contrib.json.classic.JsonLayout">
+                <jsonFormatter class="ch.qos.logback.contrib.jackson.JacksonJsonFormatter"/>
+                <timestampFormat>yyyy-MM-dd'T'HH:mm:ss.SSS'Z'</timestampFormat>
+                <timestampFormatTimezoneId>UTC</timestampFormatTimezoneId>
+                <appendLineSeparator>true</appendLineSeparator>
+            </layout>
+            <!-- false quadruples throughput -->
+            <immediateFlush>true</immediateFlush>
+        </encoder>
+        <!-- To allow more than one JVM write to the same file, set prudent to true -->
+        <prudent>false</prudent>
+    </appender>
+
+    <!--    将info等级及以上的日志使用batchHttp处理-->
+    <root level="info">
+        <appender-ref ref="batchHttp"/>
+    </root>
+
+    <!--将debug等级及以上的日志写入控制台及文件-->
+    <root level="DEBUG">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="JSONFILE"/>
+    </root>
+
+</configuration>

@@ -1,0 +1,3 @@
+iter,fes,curr_bestf,bestf,time,distance_history,distance_gen,distance_train,d1_loss,d1_real,d1_fake,d1_Wdistance,d2_loss,d2_real,d2_fake,d2_Wdistance,g_loss,g_d1_loss,g_d2_loss,spread_history,spread_gen,spread_train,best_x
+0,2000,15886.4,15886.4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,"[1485.9255     41.109016   85.461235   59.36323    30.977901 1031.7878
+  591.60474  2596.0198  ]"
