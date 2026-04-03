@@ -428,7 +428,7 @@ export const drillingAPI = {
   /**
    * 更新井场
    * @param {Object} data - 井场数据
-   * @param {string} data.id - 井场ID
+   * @param {string} data.id - 井场ID（编辑时必填，由后端自动生成）
    * @param {string} data.name - 井场名称
    * @param {string} data.code - 井场编号
    * @returns {Promise<Object>} 更新结果
@@ -504,7 +504,7 @@ export const drillingAPI = {
   /**
    * 更新井
    * @param {Object} data - 井数据
-   * @param {string} data.id - 井ID
+   * @param {string} data.id - 井ID（编辑时必填，由后端自动生成）
    * @param {string} data.wellNo - 井号
    * @param {string} data.name - 井名
    * @param {number} data.wellheadE - 井口东坐标
