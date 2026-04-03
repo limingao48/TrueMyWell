@@ -22,6 +22,7 @@
           :data-source="filteredSiteList"
           :pagination="{ pageSize: 10, showSizeChanger: true }"
           row-key="id"
+          :loading="loading"
         >
           <span slot="action" slot-scope="text, record">
             <a @click="openSiteModal(record)">编辑</a>
@@ -57,13 +58,14 @@
                 <a-button style="margin-left: 8px" @click="wellQuery = {}">重置</a-button>
                 <a-button type="primary" icon="plus" style="margin-left: 8px" @click="openAddWellDrawer()">新增井</a-button>
               </a-form-item>
-            </a-form>
-            <a-table
-              :columns="wellColumns"
-              :data-source="filteredWellList"
-              :pagination="{ pageSize: 10, showSizeChanger: true }"
-              row-key="id"
-            >
+          </a-form>
+          <a-table
+            :columns="wellColumns"
+            :data-source="filteredWellList"
+            :pagination="{ pageSize: 10, showSizeChanger: true }"
+            row-key="id"
+            :loading="loading"
+          >
               <span slot="action" slot-scope="text, record">
                 <a @click="openEditWellModal(record)">编辑</a>
                 <a-divider type="vertical" />
@@ -253,25 +255,9 @@
 import * as XLSXModule from 'xlsx'
 import * as echarts from 'echarts'
 import 'echarts-gl'
-import { getWellTrajectoryExcel } from '@/api/drilling'
+import { drillingAPI } from '@/api'
 
 const XLSX = XLSXModule.default || XLSXModule
-
-// 模拟井场
-const MOCK_SITES = [
-  { id: 's1', name: 'A 井场', code: 'A' },
-  { id: 's2', name: 'B 井场', code: 'B' }
-]
-// 模拟井（按井场归属）
-const MOCK_WELLS = [
-  { id: '1', siteId: 's1', wellNo: '41-37YH3', name: '41-37YH3', wellheadE: 208, wellheadN: 2015, wellheadD: 0, wellDiameter: 0.216 },
-  { id: '2', siteId: 's1', wellNo: '41-37YH5', name: '41-37YH5', wellheadE: 209, wellheadN: 2000, wellheadD: 0, wellDiameter: 0.216 },
-  { id: '3', siteId: 's2', wellNo: '41-38YH1', name: '41-38YH1', wellheadE: 220, wellheadN: 2025, wellheadD: 0, wellDiameter: 0.216 }
-]
-const MOCK_NEIGHBOR_FILES = [
-  { id: 'f1', fileName: '41-37YH3.xlsx', wellNo: '41-37YH3', uploadTime: '2024-01-15 10:00' },
-  { id: 'f2', fileName: '41-37YH5.xlsx', wellNo: '41-37YH5', uploadTime: '2024-01-16 11:00' }
-]
 
 // Excel 要求列名（兼容多种写法）
 const EXCEL_COLUMNS = {
@@ -293,8 +279,9 @@ export default {
   name: 'BasicData',
   data () {
     return {
+      loading: false,
       siteQuery: {},
-      siteList: [...MOCK_SITES],
+      siteList: [],
       siteColumns: [
         { title: '井场名称', dataIndex: 'name', key: 'name' },
         { title: '井场编号', dataIndex: 'code', key: 'code' },
@@ -305,7 +292,7 @@ export default {
 
       currentSiteId: null,
       wellQuery: {},
-      wellList: [...MOCK_WELLS],
+      wellList: [],
       wellColumns: [
         { title: '井号', dataIndex: 'wellNo', key: 'wellNo' },
         { title: '井名', dataIndex: 'name', key: 'name' },
@@ -315,7 +302,7 @@ export default {
         { title: '井径(m)', dataIndex: 'wellDiameter', key: 'wellDiameter' },
         { title: '操作', key: 'action', scopedSlots: { customRender: 'action' }, width: 180 }
       ],
-      neighborFileList: [...MOCK_NEIGHBOR_FILES],
+      neighborFileList: [],
       neighborFileColumns: [
         { title: '文件名', dataIndex: 'fileName', key: 'fileName' },
         { title: '关联井号', dataIndex: 'wellNo', key: 'wellNo', scopedSlots: { customRender: 'wellNo' } },
@@ -364,6 +351,18 @@ export default {
       wellTrajectoryData: {}
     }
   },
+  created () {
+    this.loadSiteList()
+  },
+  watch: {
+    currentSiteId (newSiteId) {
+      if (newSiteId) {
+        this.loadWellList(newSiteId)
+      } else {
+        this.wellList = []
+      }
+    }
+  },
   computed: {
     filteredSiteList () {
       if (!this.siteQuery.name) return this.siteList
@@ -390,8 +389,38 @@ export default {
     }
   },
   methods: {
+    // 加载井场列表
+    loadSiteList () {
+      this.loading = true
+      drillingAPI.getSiteList()
+        .then(res => {
+          this.siteList = res.data || []
+        })
+        .catch(err => {
+          this.$message.error('获取井场列表失败：' + (err.message || '未知错误'))
+        })
+        .finally(() => {
+          this.loading = false
+        })
+    },
+
+    // 加载井列表
+    loadWellList (siteId) {
+      this.loading = true
+      drillingAPI.getWellsBySite(siteId)
+        .then(res => {
+          this.wellList = res.data || []
+        })
+        .catch(err => {
+          this.$message.error('获取井列表失败：' + (err.message || '未知错误'))
+        })
+        .finally(() => {
+          this.loading = false
+        })
+    },
+
     searchSites () {
-      this.$forceUpdate()
+      this.loadSiteList()
     },
     openSiteModal (record) {
       this.siteForm = record ? { ...record } : { id: null, name: '', code: '' }
@@ -402,20 +431,40 @@ export default {
         this.$message.warning('请填写井场名称')
         return
       }
-      if (this.siteForm.id) {
-        const idx = this.siteList.findIndex(s => s.id === this.siteForm.id)
-        if (idx >= 0) this.siteList.splice(idx, 1, { ...this.siteForm })
-      } else {
-        this.siteList.push({ ...this.siteForm, id: 's' + Date.now() })
-      }
-      this.siteModalVisible = false
-      this.$message.success('保存成功')
+      this.loading = true
+      const request = this.siteForm.id ? drillingAPI.updateSite(this.siteForm) : drillingAPI.createSite(this.siteForm)
+      request
+        .then(res => {
+          this.siteModalVisible = false
+          this.loadSiteList()
+          this.$message.success('保存成功')
+        })
+        .catch(err => {
+          this.$message.error('保存失败：' + (err.message || '未知错误'))
+        })
+        .finally(() => {
+          this.loading = false
+        })
     },
     deleteSite (record) {
-      this.siteList = this.siteList.filter(s => s.id !== record.id)
-      this.wellList = this.wellList.filter(w => w.siteId !== record.id)
-      if (this.currentSiteId === record.id) this.currentSiteId = null
-      this.$message.success('已删除井场')
+      this.$confirm({
+        title: '确定删除该井场？其下井数据将一并移除。',
+        onOk: () => {
+          this.loading = true
+          drillingAPI.deleteSite(record.id)
+            .then(res => {
+              this.loadSiteList()
+              if (this.currentSiteId === record.id) this.currentSiteId = null
+              this.$message.success('已删除井场')
+            })
+            .catch(err => {
+              this.$message.error('删除失败：' + (err.message || '未知错误'))
+            })
+            .finally(() => {
+              this.loading = false
+            })
+        }
+      })
     },
     enterSite (record) {
       this.currentSiteId = record.id
@@ -425,7 +474,7 @@ export default {
     },
 
     searchWells () {
-      this.$forceUpdate()
+      this.loadWellList(this.currentSiteId)
     },
     openAddWellDrawer () {
       this.addWellForm = {
@@ -511,8 +560,7 @@ export default {
         return
       }
       this.addWellSubmitting = true
-      const newWell = {
-        id: String(Date.now()),
+      const wellData = {
         siteId: this.currentSiteId,
         wellNo: f.wellNo.trim(),
         name: (f.name || f.wellNo).trim(),
@@ -521,19 +569,17 @@ export default {
         wellheadD: f.wellheadD,
         wellDiameter: f.wellDiameter != null ? f.wellDiameter : undefined
       }
-      this.wellList.push(newWell)
-      this.neighborFileList.push({
-        id: 'f' + Date.now(),
-        fileName: (f.fileList[0] && f.fileList[0].name) || '轨迹.xlsx',
-        wellNo: newWell.wellNo,
-        uploadTime: new Date().toLocaleString()
-      })
-      if (f.parsedRows && f.parsedRows.length) {
-        this.wellTrajectoryData[newWell.id] = { rows: f.parsedRows.map(r => ({ md: r.md, inclination: r.inclination, azimuth: r.azimuth })) }
-      }
-      this.addWellSubmitting = false
-      this.addWellDrawerVisible = false
-      this.$message.success('井已新增（轨迹已按 Excel 解析）')
+      drillingAPI.createWell(wellData)
+        .then(res => {
+          this.addWellSubmitting = false
+          this.addWellDrawerVisible = false
+          this.loadWellList(this.currentSiteId)
+          this.$message.success('井已新增（轨迹已按 Excel 解析）')
+        })
+        .catch(err => {
+          this.addWellSubmitting = false
+          this.$message.error('新增失败：' + (err.message || '未知错误'))
+        })
     },
 
     openEditWellModal (record) {
@@ -541,16 +587,38 @@ export default {
       this.wellModalVisible = true
     },
     saveWell () {
-      const idx = this.wellList.findIndex(w => w.id === this.wellForm.id)
-      if (idx >= 0) this.wellList.splice(idx, 1, { ...this.wellForm })
-      this.wellModalVisible = false
-      this.$message.success('保存成功')
+      this.loading = true
+      drillingAPI.updateWell(this.wellForm)
+        .then(res => {
+          this.wellModalVisible = false
+          this.loadWellList(this.currentSiteId)
+          this.$message.success('保存成功')
+        })
+        .catch(err => {
+          this.$message.error('保存失败：' + (err.message || '未知错误'))
+        })
+        .finally(() => {
+          this.loading = false
+        })
     },
     deleteWell (record) {
-      this.wellList = this.wellList.filter(w => w.id !== record.id)
-      this.neighborFileList = this.neighborFileList.filter(f => f.wellNo !== record.wellNo)
-      delete this.wellTrajectoryData[record.id]
-      this.$message.success('已删除')
+      this.$confirm({
+        title: '确定删除？可能影响已有设计与扫描记录。',
+        onOk: () => {
+          this.loading = true
+          drillingAPI.deleteWell(record.id)
+            .then(res => {
+              this.loadWellList(this.currentSiteId)
+              this.$message.success('已删除')
+            })
+            .catch(err => {
+              this.$message.error('删除失败：' + (err.message || '未知错误'))
+            })
+            .finally(() => {
+              this.loading = false
+            })
+        }
+      })
     },
     beforeUploadTrajectory (file) {
       this.neighborFileList.push({
@@ -642,7 +710,7 @@ export default {
           return Promise.resolve({ wellNo: well.wellNo, points })
         }
         // 先走后端接口（当前为占位，会 reject，不真实发请求）
-        return getWellTrajectoryExcel(this.currentSiteId, well.id)
+        return drillingAPI.getWellTrajectoryExcel(this.currentSiteId, well.id)
           .then(buf => parseExcelBuffer(buf, well))
           .catch(() => {
             // 回退：从 public 按井号加载（如 41-37YH3.xlsx、41-37YH5.xlsx）
