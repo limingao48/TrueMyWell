@@ -1,32 +1,26 @@
 package club.yunzhi.api.workReview.controller;
 
 import club.yunzhi.api.workReview.entity.Well;
-import club.yunzhi.api.workReview.service.TaskService;
 import club.yunzhi.api.workReview.service.WellService;
 import com.fasterxml.jackson.annotation.JsonView;
-import com.mengyunzhi.core.annotation.query.In;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.SortDefault;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 任务管理
+ * 井管理
  */
 @RestController
 @RequestMapping("well")
 public class WellController {
 
   private WellService wellService;
-  private TaskService taskService;
-  public WellController(WellService wellService,
-                        TaskService taskService) {
+  public WellController(WellService wellService) {
     this.wellService = wellService;
-    this.taskService = taskService;
   }
 
   @GetMapping("getAll")
@@ -37,18 +31,8 @@ public class WellController {
   }
 
   @GetMapping("getAllNumber")
-  public ArrayList<Long> getAllNumber() {
-    ArrayList<Long> arrayList = new ArrayList<>();
-    long wellsNumber = this.wellService.getAllNumber();
-    long tasksNumber = this.taskService.getAllNumber();
-    long monthTaskNumber = this.taskService.monthTaskNumber();
-    long todayTaskNumber = this.taskService.todayTaskNumber();
-//    Integer
-    arrayList.add(wellsNumber);
-    arrayList.add(tasksNumber);
-    arrayList.add(monthTaskNumber);
-    arrayList.add(todayTaskNumber);
-    return arrayList;
+  public long getAllNumber() {
+    return this.wellService.getAllNumber();
   }
 
   @GetMapping("page")
@@ -70,18 +54,16 @@ public class WellController {
     return this.wellService.add(well);
   }
 
-//  /**
-//   * 将状态设置为评阅中.
-//   *
-//   * @param id id
-//   * @return
-//   */
-//  @PatchMapping("setStatusToReviewing/{id}")
-//  @JsonView(SetStatusToReviewingJsonView.class)
-//  @Secured(YunzhiSecurityRole.ROLE_TEACHER)
-//  public Review setStatusToReviewing(@PathVariable Long id) {
-//    return this.reviewService.setStatusToReviewing(id);
-//  }
+  @PutMapping("update")
+  @JsonView(PageJsonView.class)
+  public String update(@RequestBody Well well) {
+    return this.wellService.update(well);
+  }
+
+  @DeleteMapping("delete")
+  public String delete(@RequestParam Long id) {
+    return this.wellService.delete(id);
+  }
 
   public interface GetAllJsonView {}
   public interface PageJsonView {}

@@ -17,4 +17,8 @@ public interface WellService {
     Page<Well> page(String wellId, Pageable pageable);
 
     String add(Well well);
+
+    String update(Well well);
+
+    String delete(Long id);
 }

@@ -1,63 +1,61 @@
 package club.yunzhi.api.workReview.entity;
 
-import com.fasterxml.jackson.annotation.JsonView;
-import org.hibernate.annotations.SQLDelete;
-import org.hibernate.annotations.Where;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-
-import javax.persistence.*;
-import java.util.ArrayList;
-import java.util.List;
+import javax.persistence.Entity;
 
 /**
- * 井实体.
+ * 井实体
  */
 @Entity
-@SQLDelete(sql = "update `well` set deleted = 1 where id = ?")
-@Where(clause = "deleted = false")
-@EntityListeners(AuditingEntityListener.class)
 public class Well extends BaseEntity {
-//
-//    @OneToOne
-//    @JsonView(UserJsonView.class)
-//    private User user;
+    /**
+     * 井场ID
+     */
+    private Long siteId;
 
-//    @ManyToOne
-//    @JoinColumn(nullable = false)
-//    @JsonView(ClazzJsonView.class)
-//    private Clazz clazz;
+    /**
+     * 井号
+     */
+    private String wellNo;
+
+    /**
+     * 井名
+     */
     private String name;
 
-    private String uniqueKey;
+    /**
+     * 井口东坐标
+     */
+    private Double wellheadE;
 
-    @OneToMany(mappedBy = "well")
-    @JsonView(TasksJsonView.class)
-    private List<Task> tasks = new ArrayList<>();
+    /**
+     * 井口北坐标
+     */
+    private Double wellheadN;
 
-    private Integer predictNumber;
+    /**
+     * 井口海拔
+     */
+    private Double wellheadD;
 
-    private Integer taskNumber;
+    /**
+     * 井径
+     */
+    private Double wellDiameter;
 
-    private Integer predictTotalNumber;
-
-    private Integer weekPredictNumber;
-
-    private Integer todayPredictNumber;
-
-//    public Clazz getClazz() {
-//        return clazz;
-//    }
-//
-//    public void setClazz(Clazz clazz) {
-//        this.clazz = clazz;
-//    }
-
-    public List<Task> getTasks() {
-        return tasks;
+    public Long getSiteId() {
+        return siteId;
     }
 
-    public void setTasks(List<Task> tasks) {
-        this.tasks = tasks;
+    public void setSiteId(Long siteId) {
+        this.siteId = siteId;
+    }
+
+    public String getWellNo() {
+        return wellNo;
+    }
+
+    public void setWellNo(String wellNo) {
+        this.wellNo = wellNo;
     }
 
     public String getName() {
@@ -68,60 +66,35 @@ public class Well extends BaseEntity {
         this.name = name;
     }
 
-    public Integer getPredictNumber() {
-        return predictNumber;
+    public Double getWellheadE() {
+        return wellheadE;
     }
 
-    public void setPredictNumber(Integer predictNumber) {
-        this.predictNumber = predictNumber;
+    public void setWellheadE(Double wellheadE) {
+        this.wellheadE = wellheadE;
     }
 
-    public Integer getTaskNumber() {
-        return taskNumber;
+    public Double getWellheadN() {
+        return wellheadN;
     }
 
-    public void setTaskNumber(Integer taskNumber) {
-        this.taskNumber = taskNumber;
+    public void setWellheadN(Double wellheadN) {
+        this.wellheadN = wellheadN;
     }
 
-    public Integer getPredictTotalNumber() {
-        return predictTotalNumber;
+    public Double getWellheadD() {
+        return wellheadD;
     }
 
-    public void setPredictTotalNumber(Integer predictTotalNumber) {
-        this.predictTotalNumber = predictTotalNumber;
+    public void setWellheadD(Double wellheadD) {
+        this.wellheadD = wellheadD;
     }
 
-    public Integer getWeekPredictNumber() {
-        return weekPredictNumber;
+    public Double getWellDiameter() {
+        return wellDiameter;
     }
 
-    public void setWeekPredictNumber(Integer weekPredictNumber) {
-        this.weekPredictNumber = weekPredictNumber;
-    }
-
-    public Integer getTodayPredictNumber() {
-        return todayPredictNumber;
-    }
-
-    public void setTodayPredictNumber(Integer todayPredictNumber) {
-        this.todayPredictNumber = todayPredictNumber;
-    }
-
-    public String getUniqueKey() {
-        return uniqueKey;
-    }
-
-    public void setUniqueKey(String uniqueKey) {
-        this.uniqueKey = uniqueKey;
-    }
-
-    public interface UserJsonView {
-    }
-
-    public interface ClazzJsonView {
-    }
-
-    public interface TasksJsonView {
+    public void setWellDiameter(Double wellDiameter) {
+        this.wellDiameter = wellDiameter;
     }
 }
