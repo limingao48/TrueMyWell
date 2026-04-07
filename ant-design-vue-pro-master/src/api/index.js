@@ -40,17 +40,17 @@ const API = {
   // 钻井相关
   drilling: {
     // 井场相关
-    getSiteList: '/drilling/site/list',
-    createSite: '/drilling/site/create',
-    updateSite: '/drilling/site/update',
-    deleteSite: '/drilling/site/delete',
-    getSiteById: '/drilling/site/get',
+    getSiteList: '/site/getAll',
+    createSite: '/site/add',
+    updateSite: '/site/update',
+    deleteSite: '/site/delete',
+    getSiteById: '/site/getById',
     // 井相关
-    getWellsBySite: '/drilling/site/wells',
-    createWell: '/drilling/well/create',
-    updateWell: '/drilling/well/update',
-    deleteWell: '/drilling/well/delete',
-    getWellById: '/drilling/well/get',
+    getWellsBySite: '/well/getAll',
+    createWell: '/well/add',
+    updateWell: '/well/update',
+    deleteWell: '/well/delete',
+    getWellById: '/well/getById',
     getWellTrajectoryExcel: '/drilling/well/trajectory-excel'
   }
 }
@@ -450,7 +450,7 @@ export const drillingAPI = {
     return request({
       url: API.drilling.deleteSite,
       method: 'delete',
-      params: { siteId }
+      params: { id: siteId }
     })
   },
 
@@ -530,7 +530,7 @@ export const drillingAPI = {
     return request({
       url: API.drilling.deleteWell,
       method: 'delete',
-      params: { wellId }
+      params: { id: wellId }
     })
   },
 

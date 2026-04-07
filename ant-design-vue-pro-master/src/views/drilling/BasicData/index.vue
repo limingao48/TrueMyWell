@@ -389,12 +389,18 @@ export default {
     }
   },
   methods: {
+    normalizeListResponse (res) {
+      if (Array.isArray(res)) return res
+      if (res && Array.isArray(res.data)) return res.data
+      return []
+    },
+
     // 加载井场列表
     loadSiteList () {
       this.loading = true
       drillingAPI.getSiteList()
         .then(res => {
-          this.siteList = res.data || []
+          this.siteList = this.normalizeListResponse(res)
         })
         .catch(err => {
           this.$message.error('获取井场列表失败：' + (err.message || '未知错误'))
@@ -409,7 +415,8 @@ export default {
       this.loading = true
       drillingAPI.getWellsBySite(siteId)
         .then(res => {
-          this.wellList = res.data || []
+          const allWells = this.normalizeListResponse(res)
+          this.wellList = allWells.filter(w => String(w.siteId) === String(siteId))
         })
         .catch(err => {
           this.$message.error('获取井列表失败：' + (err.message || '未知错误'))

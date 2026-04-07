@@ -1,7 +1,7 @@
 spring:
   profiles:
     # demo: 演示环境，内置数据库；pro 生产环境，mysql数据库
-    active: ${active:dev}
+    active: ${active:pro}
   # hibernate 数据库 验证级别
   jpa:
     hibernate:
@@ -59,9 +59,9 @@ spring:
     enabled: false
   # 配置数据源
   datasource:
-    url: jdbc:mysql://${datasource.url:127.0.0.1}:${datasource.port:3306}/${datasource.dbname:magnetic}?useUnicode=true&characterEncoding=utf-8&allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://${datasource.url:127.0.0.1}:${datasource.port:3306}/${datasource.dbname:well}?useUnicode=true&characterEncoding=utf-8&allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Shanghai
     username: ${datasource.username:root}
-    password: ${datasource.password:}
+    password: ${datasource.password:Bupt@2023}
 
 ---
 # PJ专用数据库

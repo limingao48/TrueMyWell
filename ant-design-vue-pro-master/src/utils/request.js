@@ -9,10 +9,7 @@ import qs from 'qs'
 // 创建 axios 实例
 const request = axios.create({
   // API 请求的默认前缀
-  // baseURL: process.env.VUE_APP_API_BASE_URL,
-  baseURL: '/api',
-  // baseURL: 'http://10.112.205.113:8003',
-  // baseURL: 'magnetic-java:8003',
+  baseURL: process.env.VUE_APP_API_BASE_URL || '/api',
   timeout: 6000, // 请求超时时间
   paramsSerializer: function (params) {
     return qs.stringify(params, { arrayFormat: 'repeat' })
