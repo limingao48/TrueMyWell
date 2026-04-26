@@ -51,7 +51,16 @@ const API = {
     updateWell: '/well/update',
     deleteWell: '/well/delete',
     getWellById: '/well/getById',
-    getWellTrajectoryExcel: '/drilling/well/trajectory-excel'
+    getWellTrajectoryExcel: '/drilling/well/trajectory-excel',
+
+    getTrajectoryFiles: '/trajectoryFile/getAll',
+    getTrajectoryFileById: '/trajectoryFile/getById',
+    createTrajectoryFile: '/trajectoryFile/add',
+    updateTrajectoryFile: '/trajectoryFile/update',
+    deleteTrajectoryFile: '/trajectoryFile/delete',
+    uploadTrajectoryFile: '/trajectoryFile/upload',
+    linkWellTrajectory: '/trajectoryFile/linkWell',
+    addWellWithFile: '/trajectoryFile/addWellWithFile'
   }
 }
 
@@ -550,6 +559,24 @@ export const drillingAPI = {
     //   params: { siteId, wellId },
     //   responseType: 'arraybuffer'
     // }).then(res => res.data)
+  },
+  getTrajectoryFiles () {
+    return request({ url: API.drilling.getTrajectoryFiles, method: 'get' })
+  },
+  uploadTrajectoryFile (file, wellNo) {
+    const fd = new FormData()
+    fd.append('file', file)
+    if (wellNo) fd.append('wellNo', wellNo)
+    return request({ url: API.drilling.uploadTrajectoryFile, method: 'post', data: fd })
+  },
+  linkWellTrajectory (id, wellNo) {
+    return request({ url: API.drilling.linkWellTrajectory, method: 'put', params: { id, wellNo } })
+  },
+  deleteTrajectoryFile (id) {
+    return request({ url: API.drilling.deleteTrajectoryFile, method: 'delete', params: { id } })
+  },
+  addWellWithFile (formData) {
+    return request({ url: API.drilling.addWellWithFile, method: 'post', data: formData })
   }
 }
 
