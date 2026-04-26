@@ -58,14 +58,14 @@
                 <a-button style="margin-left: 8px" @click="wellQuery = {}">重置</a-button>
                 <a-button type="primary" icon="plus" style="margin-left: 8px" @click="openAddWellDrawer()">新增井</a-button>
               </a-form-item>
-          </a-form>
-          <a-table
-            :columns="wellColumns"
-            :data-source="filteredWellList"
-            :pagination="{ pageSize: 10, showSizeChanger: true }"
-            row-key="id"
-            :loading="loading"
-          >
+            </a-form>
+            <a-table
+              :columns="wellColumns"
+              :data-source="filteredWellList"
+              :pagination="{ pageSize: 10, showSizeChanger: true }"
+              row-key="id"
+              :loading="loading"
+            >
               <span slot="action" slot-scope="text, record">
                 <a @click="openEditWellModal(record)">编辑</a>
                 <a-divider type="vertical" />
@@ -309,7 +309,6 @@ export default {
         { title: '上传时间', dataIndex: 'uploadTime', key: 'uploadTime' },
         { title: '操作', key: 'action', scopedSlots: { customRender: 'action' }, width: 220 }
       ],
-
       wellModalVisible: false,
       wellForm: {
         id: null,
@@ -353,6 +352,7 @@ export default {
   },
   created () {
     this.loadSiteList()
+    this.loadTrajectoryFileList()
   },
   watch: {
     currentSiteId (newSiteId) {
@@ -424,6 +424,13 @@ export default {
         .finally(() => {
           this.loading = false
         })
+    },
+    loadTrajectoryFileList () {
+      drillingAPI.getTrajectoryFiles().then(res => {
+        this.neighborFileList = Array.isArray(res) ? res : (res.data || [])
+      }).catch(err => {
+        console.error('加载轨迹文件失败', err)
+      })
     },
 
     searchSites () {
@@ -541,8 +548,14 @@ export default {
         }
       }
       reader.readAsArrayBuffer(file)
-      this.addWellForm.fileList = [{ uid: file.uid, name: file.name, status: 'done' }]
-      return false
+      // 关键：存储原始文件对象，用于后续上传
+      this.addWellForm.fileList = [{
+        uid: file.uid,
+        name: file.name,
+        status: 'done',
+        originFileObj: file // 保存原始文件对象
+      }]
+      return false // 阻止默认上传行为
     },
     submitAddWell () {
       const f = this.addWellForm
@@ -587,6 +600,22 @@ export default {
           this.addWellSubmitting = false
           this.$message.error('新增失败：' + (err.message || '未知错误'))
         })
+      const formData = new FormData()
+      formData.append('wellNo', f.wellNo.trim())
+      formData.append('wellName', (f.name || f.wellNo).trim())
+      formData.append('file', f.fileList[0].originFileObj)
+      drillingAPI.addWellWithFile(formData)
+        .then(res => {
+          this.addWellSubmitting = false
+          this.addWellDrawerVisible = false
+          this.loadWellList(this.currentSiteId)
+          this.loadTrajectoryFileList() // 刷新轨迹文件列表
+          this.$message.success('井已新增，轨迹文件已保存到数据库')
+        })
+        .catch(err => {
+          this.addWellSubmitting = false
+          this.$message.error('新增失败：' + (err.message || '未知错误'))
+        })
     },
 
     openEditWellModal (record) {
@@ -613,6 +642,13 @@ export default {
         title: '确定删除？可能影响已有设计与扫描记录。',
         onOk: () => {
           this.loading = true
+          drillingAPI.deleteTrajectoryFile(record.id)
+            .catch(err => {
+              this.$message.error('删除失败：' + (err.message || '未知错误'))
+            })
+            .finally(() => {
+              this.loading = false
+            })
           drillingAPI.deleteWell(record.id)
             .then(res => {
               this.loadWellList(this.currentSiteId)
@@ -628,14 +664,16 @@ export default {
       })
     },
     beforeUploadTrajectory (file) {
-      this.neighborFileList.push({
-        id: 'f' + Date.now(),
-        fileName: file.name,
-        wellNo: null,
-        uploadTime: new Date().toLocaleString()
+      this.loading = true
+      drillingAPI.uploadTrajectoryFile(file, null).then(savedFile => {
+        this.neighborFileList.push(savedFile)
+        this.$message.success(`文件 ${file.name} 上传成功`)
+      }).catch(err => {
+        this.$message.error('上传失败：' + (err.message || '未知错误'))
+      }).finally(() => {
+        this.loading = false
       })
-      this.$message.success('已添加：' + file.name + '，请点击「关联井」选择关联井号')
-      return false
+      return false // 阻止默认上传行为
     },
     downloadTrajectory (record) {
       const url = record.fileName ? `/${record.fileName}` : (record.wellNo ? `/${record.wellNo}.xlsx` : null)
@@ -656,12 +694,20 @@ export default {
       this.linkWellModalVisible = true
     },
     saveLinkWell () {
-      if (this.linkWellTarget) {
-        this.linkWellTarget.wellNo = this.linkWellNo || null
+      if (!this.linkWellTarget) return
+      this.loading = true
+      drillingAPI.linkWellTrajectory(this.linkWellTarget.id, this.linkWellNo || null).then(() => {
+        // 更新本地列表中的 wellNo
+        const target = this.neighborFileList.find(f => f.id === this.linkWellTarget.id)
+        if (target) target.wellNo = this.linkWellNo || null
         this.$message.success('关联成功')
-      }
-      this.linkWellModalVisible = false
-      this.linkWellTarget = null
+        this.linkWellModalVisible = false
+        this.linkWellTarget = null
+      }).catch(err => {
+        this.$message.error('关联失败：' + (err.message || '未知错误'))
+      }).finally(() => {
+        this.loading = false
+      })
     },
 
     toggleVisualization () {
