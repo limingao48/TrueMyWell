@@ -7,7 +7,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.SortDefault;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -65,6 +67,17 @@ public class TrajectoryFileController {
   @JsonView(PageJsonView.class)
   public TrajectoryFile getById(@RequestParam(required = false) String trajectoryFileId) {
     return this.trajectoryFileService.getById(trajectoryFileId);
+  }
+
+  @GetMapping("downloadByWellNo")
+  public ResponseEntity<byte[]> downloadByWellNo(@RequestParam String wellNo) {
+    byte[] fileContent = this.trajectoryFileService.getLatestFileContentByWellNo(wellNo);
+    String downloadName = (wellNo == null || wellNo.trim().isEmpty() ? "trajectory" : wellNo.trim()) + ".xlsx";
+    return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + downloadName + "\"")
+            .contentType(MediaType.APPLICATION_OCTET_STREAM)
+            .contentLength(fileContent.length)
+            .body(fileContent);
   }
 
   @PostMapping("add")

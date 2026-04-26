@@ -57,6 +57,7 @@
                 <a-button type="primary" @click="searchWells">查询</a-button>
                 <a-button style="margin-left: 8px" @click="wellQuery = {}">重置</a-button>
                 <a-button type="primary" icon="plus" style="margin-left: 8px" @click="openAddWellDrawer()">新增井</a-button>
+                <a-button style="margin-left: 8px" icon="upload" @click="openBatchImportModal()">批量导入井</a-button>
               </a-form-item>
             </a-form>
             <a-table
@@ -194,7 +195,7 @@
         @close="addWellDrawerVisible = false"
       >
         <a-alert
-          message="请填写井号与井口坐标，并上传轨迹 Excel。Excel 须包含三列（无表头）：测深(m)、井斜角(°)、网格方位(°)。"
+          message="请填写井号与井口坐标，并上传轨迹 Excel。Excel 须包含：测深(m)、井斜角(°)、网格方位(°)。"
           type="info"
           show-icon
           style="margin-bottom: 16px"
@@ -222,14 +223,17 @@
           </a-form-model-item>
           <a-divider orientation="left" class="form-divider">轨迹数据</a-divider>
           <a-form-model-item label="轨迹 Excel 文件" required>
-            <a-upload
-              :before-upload="beforeUploadWellExcel"
-              :file-list="addWellForm.fileList"
-              accept=".xlsx,.xls"
-              @remove="addWellForm.fileList = []"
-            >
-              <a-button icon="upload">选择文件（测深(m)、井斜角(°)、网格方位(°)）</a-button>
-            </a-upload>
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <a-button icon="download" @click="downloadTrajectoryTemplate">样例数据</a-button>
+              <a-upload
+                :before-upload="beforeUploadWellExcel"
+                :file-list="addWellForm.fileList"
+                accept=".xlsx,.xls"
+                @remove="addWellForm.fileList = []"
+              >
+                <a-button icon="upload">上传本地文件</a-button>
+              </a-upload>
+            </div>
             <div v-if="addWellForm.parseError" class="error-text">{{ addWellForm.parseError }}</div>
             <div v-if="addWellForm.parsePreview.length" class="preview-table">
               <div class="preview-title">解析预览（前 5 行）</div>
@@ -247,6 +251,47 @@
           <a-button type="primary" :loading="addWellSubmitting" @click="submitAddWell">确定新增</a-button>
         </div>
       </a-drawer>
+
+      <a-modal
+        v-model="batchImportVisible"
+        title="批量新增井"
+        width="920px"
+        :confirm-loading="batchImportSubmitting"
+        @ok="submitBatchImport"
+      >
+        <a-alert
+          message="可上传多个轨迹 Excel 文件；每个文件需填写井号、井口坐标等信息后再提交。"
+          type="info"
+          show-icon
+          style="margin-bottom: 12px"
+        />
+        <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+          <a-button icon="download" @click="downloadTrajectoryTemplate">样例数据</a-button>
+          <a-upload
+            :before-upload="beforeUploadBatchWellExcel"
+            :remove="removeBatchWellExcel"
+            :file-list="batchUploadFileList"
+            :multiple="true"
+            accept=".xlsx,.xls"
+          >
+            <a-button icon="upload">上传多个轨迹文件</a-button>
+          </a-upload>
+        </div>
+        <div v-if="!batchWellItems.length" style="color: rgba(0,0,0,0.45);">请先上传轨迹文件</div>
+        <div v-for="(item, idx) in batchWellItems" :key="item.uid" style="border: 1px solid #f0f0f0; border-radius: 4px; padding: 12px; margin-bottom: 12px;">
+          <div style="font-weight: 600; margin-bottom: 8px;">文件 {{ idx + 1 }}：{{ item.fileName }}</div>
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <a-input v-model="item.wellNo" placeholder="井号（必填，如 41-37YH3）" style="width: 170px;" />
+            <a-input v-model="item.name" placeholder="井名（可选，不填默认同井号）" style="width: 180px;" />
+            <a-input-number v-model="item.wellheadE" placeholder="井口东坐标 E（必填）" style="width: 170px;" />
+            <a-input-number v-model="item.wellheadN" placeholder="井口北坐标 N（必填）" style="width: 170px;" />
+            <a-input-number v-model="item.wellheadD" placeholder="井口海拔 D（必填）" style="width: 170px;" />
+            <a-input-number v-model="item.wellDiameter" :min="0" placeholder="井径(m，可选)" style="width: 150px;" />
+          </div>
+          <div v-if="item.parseError" class="error-text">{{ item.parseError }}</div>
+          <div v-else-if="item.parsedRows && item.parsedRows.length" class="preview-title">轨迹校验通过，共 {{ item.parsedRows.length }} 行</div>
+        </div>
+      </a-modal>
     </a-card>
   </page-header-wrapper>
 </template>
@@ -337,6 +382,10 @@ export default {
         parsePreview: [],
         parsedRows: null
       },
+      batchImportVisible: false,
+      batchImportSubmitting: false,
+      batchUploadFileList: [],
+      batchWellItems: [],
       excelPreviewColumns: [
         { title: '测深(m)', dataIndex: 'md', key: 'md' },
         { title: '井斜角(°)', dataIndex: 'inclination', key: 'inclination' },
@@ -389,6 +438,72 @@ export default {
     }
   },
   methods: {
+    parseTrajectoryExcelFile (file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          try {
+            const data = new Uint8Array(e.target.result)
+            const wb = XLSX.read(data, { type: 'array' })
+            const firstSheet = wb.Sheets[wb.SheetNames[0]]
+            const json = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' })
+            if (!json.length) {
+              resolve({ parseError: 'Excel 为空或无法解析', parsePreview: [], parsedRows: null })
+              return
+            }
+            const headers = json[0].map(h => (h != null ? String(h).trim() : ''))
+            const iMd = findColumnIndex(headers, EXCEL_COLUMNS.md)
+            const iInc = findColumnIndex(headers, EXCEL_COLUMNS.inclination)
+            const iAzi = findColumnIndex(headers, EXCEL_COLUMNS.azimuth)
+            if (iMd < 0 || iInc < 0 || iAzi < 0) {
+              const missing = []
+              if (iMd < 0) missing.push('测深(m)')
+              if (iInc < 0) missing.push('井斜角(°)')
+              if (iAzi < 0) missing.push('网格方位(°)')
+              resolve({ parseError: '缺少列：' + missing.join('、') + '。请使用包含该三列的 Excel。', parsePreview: [], parsedRows: null })
+              return
+            }
+            const rows = []
+            for (let i = 1; i < json.length; i++) {
+              const row = json[i]
+              const md = row[iMd] != null ? Number(row[iMd]) : NaN
+              const inc = row[iInc] != null ? Number(row[iInc]) : NaN
+              const azi = row[iAzi] != null ? Number(row[iAzi]) : NaN
+              if (Number.isNaN(md) && Number.isNaN(inc) && Number.isNaN(azi)) continue
+              rows.push({ md, inclination: inc, azimuth: azi })
+            }
+            resolve({ parseError: '', parsePreview: rows.slice(0, 5), parsedRows: rows })
+          } catch (err) {
+            resolve({ parseError: '解析失败：' + (err.message || String(err)), parsePreview: [], parsedRows: null })
+          }
+        }
+        reader.readAsArrayBuffer(file)
+      })
+    },
+    getWellNoFromFileName (name) {
+      if (!name) return ''
+      const idx = name.lastIndexOf('.')
+      return idx > 0 ? name.slice(0, idx) : name
+    },
+    async saveWellWithTrajectory (payload) {
+      const wellNo = (payload.wellNo || '').trim()
+      const wellName = (payload.name || wellNo).trim()
+      const wellData = {
+        siteId: this.currentSiteId,
+        wellNo,
+        name: wellName,
+        wellheadE: payload.wellheadE,
+        wellheadN: payload.wellheadN,
+        wellheadD: payload.wellheadD,
+        wellDiameter: payload.wellDiameter != null ? payload.wellDiameter : undefined
+      }
+      await drillingAPI.createWell(wellData)
+      const formData = new FormData()
+      formData.append('wellNo', wellNo)
+      formData.append('wellName', wellName)
+      formData.append('file', payload.file)
+      await drillingAPI.addWellWithFile(formData)
+    },
     normalizeListResponse (res) {
       if (Array.isArray(res)) return res
       if (res && Array.isArray(res.data)) return res.data
@@ -509,45 +624,11 @@ export default {
       this.addWellForm.parseError = ''
       this.addWellForm.parsePreview = []
       this.addWellForm.parsedRows = null
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        try {
-          const data = new Uint8Array(e.target.result)
-          const wb = XLSX.read(data, { type: 'array' })
-          const firstSheet = wb.Sheets[wb.SheetNames[0]]
-          const json = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' })
-          if (!json.length) {
-            this.addWellForm.parseError = 'Excel 为空或无法解析'
-            return
-          }
-          const headers = json[0].map(h => (h != null ? String(h).trim() : ''))
-          const iMd = findColumnIndex(headers, EXCEL_COLUMNS.md)
-          const iInc = findColumnIndex(headers, EXCEL_COLUMNS.inclination)
-          const iAzi = findColumnIndex(headers, EXCEL_COLUMNS.azimuth)
-          if (iMd < 0 || iInc < 0 || iAzi < 0) {
-            const missing = []
-            if (iMd < 0) missing.push('测深(m)')
-            if (iInc < 0) missing.push('井斜角(°)')
-            if (iAzi < 0) missing.push('网格方位(°)')
-            this.addWellForm.parseError = '缺少列：' + missing.join('、') + '。请使用包含该三列的 Excel。'
-            return
-          }
-          const rows = []
-          for (let i = 1; i < json.length; i++) {
-            const row = json[i]
-            const md = row[iMd] != null ? Number(row[iMd]) : NaN
-            const inc = row[iInc] != null ? Number(row[iInc]) : NaN
-            const azi = row[iAzi] != null ? Number(row[iAzi]) : NaN
-            if (Number.isNaN(md) && Number.isNaN(inc) && Number.isNaN(azi)) continue
-            rows.push({ md, inclination: inc, azimuth: azi })
-          }
-          this.addWellForm.parsedRows = rows
-          this.addWellForm.parsePreview = rows.slice(0, 5)
-        } catch (err) {
-          this.addWellForm.parseError = '解析失败：' + (err.message || String(err))
-        }
-      }
-      reader.readAsArrayBuffer(file)
+      this.parseTrajectoryExcelFile(file).then((res) => {
+        this.addWellForm.parseError = res.parseError
+        this.addWellForm.parsePreview = res.parsePreview
+        this.addWellForm.parsedRows = res.parsedRows
+      })
       // 关键：存储原始文件对象，用于后续上传
       this.addWellForm.fileList = [{
         uid: file.uid,
@@ -580,41 +661,128 @@ export default {
         return
       }
       this.addWellSubmitting = true
-      const wellData = {
-        siteId: this.currentSiteId,
-        wellNo: f.wellNo.trim(),
-        name: (f.name || f.wellNo).trim(),
+      this.saveWellWithTrajectory({
+        wellNo: f.wellNo,
+        name: f.name,
         wellheadE: f.wellheadE,
         wellheadN: f.wellheadN,
         wellheadD: f.wellheadD,
-        wellDiameter: f.wellDiameter != null ? f.wellDiameter : undefined
-      }
-      drillingAPI.createWell(wellData)
-        .then(res => {
+        wellDiameter: f.wellDiameter,
+        file: f.fileList[0].originFileObj
+      })
+        .then(() => {
           this.addWellSubmitting = false
           this.addWellDrawerVisible = false
           this.loadWellList(this.currentSiteId)
-          this.$message.success('井已新增（轨迹已按 Excel 解析）')
-        })
-        .catch(err => {
-          this.addWellSubmitting = false
-          this.$message.error('新增失败：' + (err.message || '未知错误'))
-        })
-      const formData = new FormData()
-      formData.append('wellNo', f.wellNo.trim())
-      formData.append('wellName', (f.name || f.wellNo).trim())
-      formData.append('file', f.fileList[0].originFileObj)
-      drillingAPI.addWellWithFile(formData)
-        .then(res => {
-          this.addWellSubmitting = false
-          this.addWellDrawerVisible = false
-          this.loadWellList(this.currentSiteId)
-          this.loadTrajectoryFileList() // 刷新轨迹文件列表
+          this.loadTrajectoryFileList()
           this.$message.success('井已新增，轨迹文件已保存到数据库')
         })
         .catch(err => {
           this.addWellSubmitting = false
           this.$message.error('新增失败：' + (err.message || '未知错误'))
+        })
+    },
+    openBatchImportModal () {
+      this.batchImportVisible = true
+      this.batchUploadFileList = []
+      this.batchWellItems = []
+    },
+    beforeUploadBatchWellExcel (file) {
+      const uid = file.uid || String(Date.now())
+      const guessedWellNo = this.getWellNoFromFileName(file.name)
+      const item = {
+        uid,
+        fileName: file.name,
+        file,
+        wellNo: guessedWellNo,
+        name: guessedWellNo,
+        wellheadE: undefined,
+        wellheadN: undefined,
+        wellheadD: undefined,
+        wellDiameter: undefined,
+        parseError: '',
+        parsePreview: [],
+        parsedRows: null
+      }
+      this.batchUploadFileList = this.batchUploadFileList.concat([{ uid, name: file.name, status: 'done' }])
+      this.batchWellItems = this.batchWellItems.concat([item])
+      this.parseTrajectoryExcelFile(file).then((res) => {
+        const target = this.batchWellItems.find(x => x.uid === uid)
+        if (!target) return
+        target.parseError = res.parseError
+        target.parsePreview = res.parsePreview
+        target.parsedRows = res.parsedRows
+      })
+      return false
+    },
+    removeBatchWellExcel (file) {
+      this.batchUploadFileList = this.batchUploadFileList.filter(x => x.uid !== file.uid)
+      this.batchWellItems = this.batchWellItems.filter(x => x.uid !== file.uid)
+    },
+    async submitBatchImport () {
+      if (!this.batchWellItems.length) {
+        this.$message.warning('请先上传轨迹文件')
+        return
+      }
+      for (let i = 0; i < this.batchWellItems.length; i++) {
+        const item = this.batchWellItems[i]
+        if (!item.wellNo || !item.wellNo.trim()) {
+          this.$message.warning(`第 ${i + 1} 个文件未填写井号`)
+          return
+        }
+        if (item.wellheadE == null || item.wellheadN == null || item.wellheadD == null) {
+          this.$message.warning(`第 ${i + 1} 个文件请填写井口坐标 E、N、D`)
+          return
+        }
+        if (item.parseError) {
+          this.$message.warning(`第 ${i + 1} 个文件格式错误：${item.parseError}`)
+          return
+        }
+        if (!item.parsedRows || !item.parsedRows.length) {
+          this.$message.warning(`第 ${i + 1} 个文件无有效轨迹数据`)
+          return
+        }
+      }
+      this.batchImportSubmitting = true
+      try {
+        for (const item of this.batchWellItems) {
+          await this.saveWellWithTrajectory({
+            wellNo: item.wellNo,
+            name: item.name,
+            wellheadE: item.wellheadE,
+            wellheadN: item.wellheadN,
+            wellheadD: item.wellheadD,
+            wellDiameter: item.wellDiameter,
+            file: item.file
+          })
+        }
+        this.batchImportVisible = false
+        this.batchUploadFileList = []
+        this.batchWellItems = []
+        this.loadWellList(this.currentSiteId)
+        this.loadTrajectoryFileList()
+        this.$message.success('批量导入完成')
+      } catch (err) {
+        this.$message.error('批量导入失败：' + (err.message || '未知错误'))
+      } finally {
+        this.batchImportSubmitting = false
+      }
+    },
+    downloadTrajectoryTemplate () {
+      drillingAPI.getWellTrajectoryTemplate()
+        .then((buffer) => {
+          const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+          const link = document.createElement('a')
+          link.href = window.URL.createObjectURL(blob)
+          link.download = '41-37YH5.xlsx'
+          document.body.appendChild(link)
+          link.click()
+          document.body.removeChild(link)
+          window.URL.revokeObjectURL(link.href)
+          this.$message.success('样例下载成功')
+        })
+        .catch((err) => {
+          this.$message.error('样例下载失败：' + (err.message || '未知错误'))
         })
     },
 
@@ -753,36 +921,19 @@ export default {
         if (!rows.length) return null
         const wellhead = [well.wellheadE, well.wellheadN, well.wellheadD]
         const points = minimumCurvatureToEND(rows, wellhead)
-        return { wellNo: well.wellNo, points }
+        return { wellNo: well.wellNo, wellName: well.name, points }
       }
-      const tryFetch = (well) => {
-        const stored = this.wellTrajectoryData[well.id]
-        if (stored && stored.rows && stored.rows.length) {
-          const wellhead = [well.wellheadE, well.wellheadN, well.wellheadD]
-          const points = minimumCurvatureToEND(stored.rows, wellhead)
-          return Promise.resolve({ wellNo: well.wellNo, points })
-        }
-        // 先走后端接口（当前为占位，会 reject，不真实发请求）
-        return drillingAPI.getWellTrajectoryExcel(this.currentSiteId, well.id)
+      const fetchWellTrajectory = (well) => {
+        return drillingAPI.getWellTrajectoryExcel(well.wellNo)
           .then(buf => parseExcelBuffer(buf, well))
-          .catch(() => {
-            // 回退：从 public 按井号加载（如 41-37YH3.xlsx、41-37YH5.xlsx）
-            const tryUrl = (url) =>
-              fetch(url).then(res => (res.ok ? res.arrayBuffer() : Promise.reject(new Error('404'))))
-            const urls = [`/optimization/${well.wellNo}.xlsx`, `/${well.wellNo}.xlsx`]
-            const neighbor = this.neighborFileList.find(f => f.wellNo === well.wellNo)
-            if (neighbor && neighbor.fileName) urls.push(`/${neighbor.fileName}`)
-            let p = Promise.reject(new Error('404'))
-            urls.forEach(url => { p = p.catch(() => tryUrl(url)) })
-            return p.then(buf => parseExcelBuffer(buf, well))
-          })
+          .catch(() => null)
       }
-      Promise.all(wells.map(w => tryFetch(w).catch(() => null)))
+      Promise.all(wells.map(w => fetchWellTrajectory(w)))
         .then(results => {
           const seriesList = results.filter(r => r && r.points && r.points.length)
           this.vizLoading = false
           if (!seriesList.length) {
-            this.vizError = '当前井场无轨迹数据。请通过「新增井」上传轨迹 Excel，或将井号同名 xlsx（如 41-37YH3.xlsx）放入 public 目录。'
+            this.vizError = '当前井场无可用轨迹数据。请先为井上传并关联轨迹文件。'
             return
           }
           this.$nextTick(() => this.render3DChart(seriesList))
@@ -801,9 +952,10 @@ export default {
       const series = seriesList.map((item, i) => {
         const color = colors[i % colors.length]
         const data = item.points.map(p => [p[0], p[1], -p[2]])
+        const displayName = item.wellName || item.wellNo
         return {
           type: 'line3D',
-          name: item.wellNo,
+          name: displayName,
           data,
           lineStyle: { width: 3, color },
           itemStyle: { opacity: 0.8 }
@@ -811,7 +963,7 @@ export default {
       })
       const option = {
         tooltip: {},
-        legend: { data: seriesList.map(s => s.wellNo), bottom: 0 },
+        legend: { data: series.map(s => s.name), bottom: 0 },
         backgroundColor: '#fff',
         xAxis3D: { type: 'value', name: 'E' },
         yAxis3D: { type: 'value', name: 'N' },

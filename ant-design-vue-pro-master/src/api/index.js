@@ -51,7 +51,8 @@ const API = {
     updateWell: '/well/update',
     deleteWell: '/well/delete',
     getWellById: '/well/getById',
-    getWellTrajectoryExcel: '/drilling/well/trajectory-excel',
+    getWellTrajectoryTemplate: '/well/trajectory-template',
+    getWellTrajectoryExcel: '/trajectoryFile/downloadByWellNo',
 
     getTrajectoryFiles: '/trajectoryFile/getAll',
     getTrajectoryFileById: '/trajectoryFile/getById',
@@ -545,20 +546,23 @@ export const drillingAPI = {
 
   /**
    * 获取单口井的轨迹 Excel 文件
-   * @param {string} siteId - 井场ID
-   * @param {string} wellId - 井ID
+   * @param {string} wellNo - 井号
    * @returns {Promise<ArrayBuffer>} Excel 文件的 ArrayBuffer
    */
-  getWellTrajectoryExcel (siteId, wellId) {
-    // 暂不真实请求，调用方会回退到从 public 按井号加载
-    return Promise.reject(new Error('USE_PUBLIC'))
-    // 对接后端时改为：
-    // return request({
-    //   url: API.drilling.getWellTrajectoryExcel,
-    //   method: 'get',
-    //   params: { siteId, wellId },
-    //   responseType: 'arraybuffer'
-    // }).then(res => res.data)
+  getWellTrajectoryExcel (wellNo) {
+    return request({
+      url: API.drilling.getWellTrajectoryExcel,
+      method: 'get',
+      params: { wellNo },
+      responseType: 'arraybuffer'
+    })
+  },
+  getWellTrajectoryTemplate () {
+    return request({
+      url: API.drilling.getWellTrajectoryTemplate,
+      method: 'get',
+      responseType: 'arraybuffer'
+    })
   },
   getTrajectoryFiles () {
     return request({ url: API.drilling.getTrajectoryFiles, method: 'get' })

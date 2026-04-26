@@ -367,17 +367,7 @@
 </template>
 
 <script>
-// 模拟井场（与基础数据联动时改为接口）
-const MOCK_SITES = [
-  { id: 's1', name: 'A 井场', code: 'A' },
-  { id: 's2', name: 'B 井场', code: 'B' }
-]
-// 模拟井（按井场归属，用于邻井选择）
-const MOCK_WELLS = [
-  { id: '1', siteId: 's1', wellNo: '41-37YH3', name: '41-37YH3', wellheadE: 208, wellheadN: 2015, wellheadD: 0 },
-  { id: '2', siteId: 's1', wellNo: '41-37YH5', name: '41-37YH5', wellheadE: 209, wellheadN: 2000, wellheadD: 0 },
-  { id: '3', siteId: 's2', wellNo: '41-38YH1', name: '41-38YH1', wellheadE: 220, wellheadN: 2025, wellheadD: 0 }
-]
+import { drillingAPI } from '@/api'
 
 // 七段式 12 参数中文标签（与后端 DLS 统一 °/30m 一致）
 const PARAM_LABELS = {
@@ -413,8 +403,8 @@ export default {
     return {
       currentStep: 0,
       designLoading: false,
-      siteList: [...MOCK_SITES],
-      wellList: [...MOCK_WELLS],
+      siteList: [],
+      wellList: [],
       form: {
         siteId: undefined,
         target: { e: 502.64, n: 2790.71, d: 2636.06 },
@@ -450,6 +440,19 @@ export default {
       paramLabels: PARAM_LABELS
     }
   },
+  watch: {
+    'form.siteId' (newSiteId) {
+      this.form.neighborWellIds = []
+      if (!newSiteId) {
+        this.wellList = []
+        return
+      }
+      this.loadWellsBySite(newSiteId)
+    }
+  },
+  created () {
+    this.loadSiteList()
+  },
   computed: {
     neighborWells () {
       if (!this.form.siteId) return []
@@ -475,6 +478,31 @@ export default {
     }
   },
   methods: {
+    normalizeListResponse (res) {
+      if (Array.isArray(res)) return res
+      if (res && Array.isArray(res.data)) return res.data
+      return []
+    },
+    loadSiteList () {
+      drillingAPI.getSiteList()
+        .then((res) => {
+          this.siteList = this.normalizeListResponse(res)
+        })
+        .catch((err) => {
+          this.$message.error('加载井场失败：' + (err.message || '未知错误'))
+        })
+    },
+    loadWellsBySite (siteId) {
+      drillingAPI.getWellsBySite(siteId)
+        .then((res) => {
+          const allWells = this.normalizeListResponse(res)
+          this.wellList = allWells.filter(w => String(w.siteId) === String(siteId))
+        })
+        .catch((err) => {
+          this.$message.error('加载井列表失败：' + (err.message || '未知错误'))
+          this.wellList = []
+        })
+    },
     nextStep () {
       if (this.currentStep < 4) this.currentStep += 1
     },
