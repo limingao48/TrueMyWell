@@ -1,0 +1,13 @@
+<component name="libraryTable">
+  <library name="Maven: com.mengyunzhi:core:3.0.1.release">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/../../../../../a_shixun/JAVA/maven_repo/com/mengyunzhi/core/3.0.1.release/core-3.0.1.release.jar!/" />
+    </CLASSES>
+    <JAVADOC>
+      <root url="jar://$PROJECT_DIR$/../../../../../a_shixun/JAVA/maven_repo/com/mengyunzhi/core/3.0.1.release/core-3.0.1.release-javadoc.jar!/" />
+    </JAVADOC>
+    <SOURCES>
+      <root url="jar://$PROJECT_DIR$/../../../../../a_shixun/JAVA/maven_repo/com/mengyunzhi/core/3.0.1.release/core-3.0.1.release-sources.jar!/" />
+    </SOURCES>
+  </library>
+</component>

@@ -1,0 +1,642 @@
+<template>
+  <page-header-wrapper :title="false">
+    <template #content>
+      先选择井场，再输入靶点、入靶需求与井口，选择优化算法，一键生成七段式设计参数与轨迹，含邻井防碰。
+    </template>
+    <a-card :bordered="false">
+      <a-steps class="steps" :current="currentStep">
+        <a-step title="选择井场" />
+        <a-step title="靶点与入靶与井口" />
+        <a-step title="邻井选择" />
+        <a-step title="算法与参数" />
+        <a-step title="结果与导出" />
+      </a-steps>
+      <div class="content">
+        <!-- 步骤0：选择井场 -->
+        <div v-if="currentStep === 0" class="step-form">
+          <p class="step-desc">选择在哪个井场中进行轨迹设计，后续邻井将从该井场下选择。</p>
+          <div class="algo-row">
+            <label class="algo-label">井场 <span class="required">*</span></label>
+            <div class="algo-input">
+              <a-select
+                v-model="form.siteId"
+                placeholder="请选择井场"
+                class="algo-input-inner"
+                allow-clear
+              >
+                <a-select-option v-for="s in siteList" :key="s.id" :value="s.id">{{ s.name }}</a-select-option>
+              </a-select>
+            </div>
+          </div>
+          <div class="step-actions">
+            <a-button type="primary" :disabled="!form.siteId" @click="nextStep">下一步</a-button>
+          </div>
+        </div>
+
+        <!-- 步骤1：靶点坐标、入靶需求、井口坐标 -->
+        <div v-if="currentStep === 1" class="step-form">
+          <p class="step-desc">输入靶点坐标、入靶时的井斜角与网格方位范围、设计井井口坐标。</p>
+          <a-divider orientation="left">靶点坐标（米，E/N/D）</a-divider>
+          <div class="algo-row">
+            <label class="algo-label">靶点东坐标 E：</label>
+            <div class="algo-input">
+              <a-input-number
+                v-model="form.target.e"
+                :min="0"
+                class="algo-input-inner"
+                placeholder="如 502.64"
+              />
+            </div>
+          </div>
+          <div class="algo-row">
+            <label class="algo-label">靶点北坐标 N：</label>
+            <div class="algo-input">
+              <a-input-number
+                v-model="form.target.n"
+                :min="0"
+                class="algo-input-inner"
+                placeholder="如 2790.71"
+              />
+            </div>
+          </div>
+          <div class="algo-row">
+            <label class="algo-label">靶点垂深 D：</label>
+            <div class="algo-input">
+              <a-input-number
+                v-model="form.target.d"
+                :min="0"
+                class="algo-input-inner"
+                placeholder="如 2636.06"
+              />
+            </div>
+          </div>
+          <a-divider orientation="left">入靶需求</a-divider>
+          <div class="algo-row">
+            <label class="algo-label">井斜角范围(°)：</label>
+            <div class="algo-input">
+              <a-input-number
+                v-model="form.landingRequirement.inclinationMin"
+                :min="0"
+                :max="90"
+                class="algo-input-inner algo-input-range"
+                placeholder="最小"
+              />
+              <span class="range-sep">~</span>
+              <a-input-number
+                v-model="form.landingRequirement.inclinationMax"
+                :min="0"
+                :max="90"
+                class="algo-input-inner algo-input-range"
+                placeholder="最大"
+              />
+            </div>
+          </div>
+          <div class="algo-row">
+            <label class="algo-label">网格方位范围(°)：</label>
+            <div class="algo-input">
+              <a-input-number
+                v-model="form.landingRequirement.azimuthMin"
+                :min="0"
+                :max="360"
+                class="algo-input-inner algo-input-range"
+                placeholder="最小"
+              />
+              <span class="range-sep">~</span>
+              <a-input-number
+                v-model="form.landingRequirement.azimuthMax"
+                :min="0"
+                :max="360"
+                class="algo-input-inner algo-input-range"
+                placeholder="最大"
+              />
+            </div>
+          </div>
+          <div class="algo-row">
+            <label class="algo-label">垂深允差(m)：</label>
+            <div class="algo-input">
+              <a-input-number
+                v-model="form.landingRequirement.verticalTolerance"
+                :min="0.1"
+                :max="50"
+                :step="0.1"
+                class="algo-input-inner"
+                placeholder="如 5"
+              />
+            </div>
+          </div>
+          <div class="algo-row">
+            <label class="algo-label">水平允差(m)：</label>
+            <div class="algo-input">
+              <a-input-number
+                v-model="form.landingRequirement.horizontalTolerance"
+                :min="0.1"
+                :max="50"
+                :step="0.1"
+                class="algo-input-inner"
+                placeholder="如 5"
+              />
+            </div>
+          </div>
+          <a-divider orientation="left">井口坐标（米，E/N/D）</a-divider>
+          <div class="algo-row">
+            <label class="algo-label">井口东坐标 E：</label>
+            <div class="algo-input">
+              <a-input-number
+                v-model="form.wellhead.e"
+                :min="0"
+                class="algo-input-inner"
+                placeholder="如 222"
+              />
+            </div>
+          </div>
+          <div class="algo-row">
+            <label class="algo-label">井口北坐标 N：</label>
+            <div class="algo-input">
+              <a-input-number
+                v-model="form.wellhead.n"
+                :min="0"
+                class="algo-input-inner"
+                placeholder="如 2030"
+              />
+            </div>
+          </div>
+          <div class="algo-row">
+            <label class="algo-label">井口海拔 D：</label>
+            <div class="algo-input">
+              <a-input-number
+                v-model="form.wellhead.d"
+                :min="0"
+                class="algo-input-inner"
+                placeholder="如 0"
+              />
+            </div>
+          </div>
+          <div class="step-actions">
+            <a-button type="primary" @click="nextStep">下一步</a-button>
+            <a-button @click="prevStep">上一步</a-button>
+          </div>
+        </div>
+
+        <!-- 步骤2：邻井选择 -->
+        <div v-if="currentStep === 2" class="step-form">
+          <div class="algo-row">
+            <label class="algo-label">选择邻井：</label>
+            <div class="algo-input">
+              <a-select
+                v-model="form.neighborWellIds"
+                mode="multiple"
+                placeholder="从当前井场中选择邻井（可多选）"
+                class="algo-input-inner algo-input-full"
+              >
+                <a-select-option v-for="w in neighborWells" :key="w.id" :value="w.id">{{ w.wellNo }} {{ w.name && w.name !== w.wellNo ? `（${w.name}）` : '' }}</a-select-option>
+              </a-select>
+            </div>
+          </div>
+          <div class="algo-row algo-row-table">
+            <label class="algo-label">已选邻井井口：</label>
+            <div class="algo-input">
+              <a-table
+                :columns="neighborColumns"
+                :data-source="selectedNeighborWellheads"
+                :pagination="false"
+                size="small"
+                row-key="id"
+              />
+            </div>
+          </div>
+          <div class="step-actions">
+            <a-button type="primary" @click="nextStep">下一步</a-button>
+            <a-button @click="prevStep">上一步</a-button>
+          </div>
+        </div>
+
+        <!-- 步骤3：算法与参数 -->
+        <div v-if="currentStep === 3" class="step-form">
+          <p class="step-desc">选择优化算法与防碰分析方法，填写防碰与造斜约束；高级参数可展开后按需填写。</p>
+
+          <div class="algo-row">
+            <label class="algo-label">优化算法</label>
+            <div class="algo-input">
+              <a-select v-model="form.algorithm.type" placeholder="请选择" class="algo-input-inner">
+                <a-select-option value="PSO">PSO</a-select-option>
+                <a-select-option value="B2OPT">B2OPT</a-select-option>
+                <a-select-option value="GA-optiGAN">GA-optiGAN</a-select-option>
+              </a-select>
+            </div>
+          </div>
+
+          <a-divider orientation="left">防碰与造斜约束</a-divider>
+          <div class="algo-row">
+            <label class="algo-label">防碰分析方法：</label>
+            <div class="algo-input">
+              <a-select v-model="form.algorithm.anticollisionMethod" placeholder="请选择" class="algo-input-inner">
+                <a-select-option value="CTC">CTC 井眼中心距法</a-select-option>
+                <a-select-option value="SF">SF 分离系数法</a-select-option>
+              </a-select>
+            </div>
+          </div>
+          <div v-if="form.algorithm.anticollisionMethod === 'CTC'" class="algo-row">
+            <label class="algo-label">最小安全半径(m)：</label>
+            <div class="algo-input">
+              <a-input-number
+                v-model="form.algorithm.safeRadius"
+                :min="1"
+                :max="50"
+                class="algo-input-inner"
+                placeholder="如 10"
+              />
+            </div>
+          </div>
+          <div v-else class="algo-row">
+            <label class="algo-label">最小 SF：</label>
+            <div class="algo-input">
+              <a-input-number
+                v-model="form.algorithm.minSafetyFactor"
+                :min="1"
+                :max="3"
+                :step="0.1"
+                class="algo-input-inner"
+                placeholder="如 1.2"
+              />
+            </div>
+          </div>
+          <div class="algo-row">
+            <label class="algo-label">最低造斜深度(m)：</label>
+            <div class="algo-input">
+              <a-input-number
+                v-model="form.algorithm.minKickoffDepth"
+                :min="0"
+                :max="5000"
+                class="algo-input-inner"
+                placeholder="如 500"
+              />
+            </div>
+          </div>
+          <div class="algo-row">
+            <label class="algo-label">狗腿度范围(°/30m)：</label>
+            <div class="algo-input">
+              <a-input-number
+                v-model="form.algorithm.doglegMin"
+                :min="0"
+                :max="20"
+                :step="0.1"
+                class="algo-input-inner algo-input-range"
+                placeholder="最小"
+              />
+              <span class="range-sep">~</span>
+              <a-input-number
+                v-model="form.algorithm.doglegMax"
+                :min="0"
+                :max="20"
+                :step="0.1"
+                class="algo-input-inner algo-input-range"
+                placeholder="最大"
+              />
+            </div>
+          </div>
+
+          <a-collapse v-if="form.algorithm.type">
+            <a-collapse-panel key="1" header="高级参数（可选）">
+              <div class="algo-row">
+                <label class="algo-label">种群数：</label>
+                <div class="algo-input">
+                  <a-input-number
+                    v-model="form.algorithm.population"
+                    :min="10"
+                    :max="500"
+                    class="algo-input-inner"
+                    placeholder="如 50"
+                  />
+                </div>
+              </div>
+              <div class="algo-row">
+                <label class="algo-label">迭代次数：</label>
+                <div class="algo-input">
+                  <a-input-number
+                    v-model="form.algorithm.iterations"
+                    :min="50"
+                    :max="2000"
+                    class="algo-input-inner"
+                    placeholder="如 200"
+                  />
+                </div>
+              </div>
+            </a-collapse-panel>
+          </a-collapse>
+
+          <div class="step-actions">
+            <a-button type="primary" :loading="designLoading" @click="startDesign">开始设计</a-button>
+            <a-button @click="prevStep">上一步</a-button>
+          </div>
+        </div>
+
+        <!-- 步骤4：结果与导出 -->
+        <div v-if="currentStep === 4" class="step-form">
+          <a-alert v-if="designResult" message="设计完成" type="success" show-icon style="margin-bottom: 16px" />
+          <a-descriptions v-if="designResult" title="七段式设计参数（12 参数）" bordered size="small" :column="2">
+            <a-descriptions-item v-for="(v, k) in designResult.best_solution_dict" :key="k" :label="paramLabels[k] || k">
+              {{ v }}
+            </a-descriptions-item>
+          </a-descriptions>
+          <div v-if="designResult" style="margin-top: 16px">
+            <a-space>
+              <span>入靶偏差：{{ designResult.final_deviation }} m</span>
+              <span>优化耗时：{{ designResult.optimization_time }} s</span>
+            </a-space>
+          </div>
+          <div v-if="designResult" class="trajectory-placeholder">
+            <div class="placeholder-box">
+              <a-icon type="line-chart" style="font-size: 48px; color: #1890ff" />
+              <p>3D 轨迹图（含邻井叠加）</p>
+              <p class="hint">对接后端轨迹点(E,N,D)后可接入 ECharts 3D / Three.js 渲染</p>
+            </div>
+          </div>
+          <div v-if="designResult" class="result-actions">
+            <a-button type="primary" icon="save" @click="saveAsDesign">保存为设计井</a-button>
+            <a-button icon="export" @click="exportReport">导出报告</a-button>
+            <a-button @click="$router.push('/drilling/anticollision')">发起防碰扫描</a-button>
+          </div>
+          <div class="step-actions" style="margin-top: 24px">
+            <a-button @click="prevStep">上一步</a-button>
+            <a-button type="primary" @click="resetSteps">重新设计</a-button>
+          </div>
+        </div>
+      </div>
+    </a-card>
+  </page-header-wrapper>
+</template>
+
+<script>
+// 模拟井场（与基础数据联动时改为接口）
+const MOCK_SITES = [
+  { id: 's1', name: 'A 井场', code: 'A' },
+  { id: 's2', name: 'B 井场', code: 'B' }
+]
+// 模拟井（按井场归属，用于邻井选择）
+const MOCK_WELLS = [
+  { id: '1', siteId: 's1', wellNo: '41-37YH3', name: '41-37YH3', wellheadE: 208, wellheadN: 2015, wellheadD: 0 },
+  { id: '2', siteId: 's1', wellNo: '41-37YH5', name: '41-37YH5', wellheadE: 209, wellheadN: 2000, wellheadD: 0 },
+  { id: '3', siteId: 's2', wellNo: '41-38YH1', name: '41-38YH1', wellheadE: 220, wellheadN: 2025, wellheadD: 0 }
+]
+
+// 七段式 12 参数中文标签（与后端 DLS 统一 °/30m 一致）
+const PARAM_LABELS = {
+  seven_L0: '第1段直井段长度(m)',
+  L0: '第1段直井段长度(m)',
+  seven_DLS1: '第2段增斜段狗腿度(°/30m)',
+  DLS1: '第2段增斜段狗腿度(°/30m)',
+  seven_alpha3: '第3段稳斜井斜角(°)',
+  alpha3: '第3段稳斜井斜角(°)',
+  seven_L3: '第3段稳斜段长度(m)',
+  L3: '第3段稳斜段长度(m)',
+  seven_DLS_turn: '第4段扭方位狗腿度(°/30m)',
+  DLS_turn: '第4段扭方位狗腿度(°/30m)',
+  seven_L4: '第4段扭方位段长度(m)',
+  L4: '第4段扭方位段长度(m)',
+  seven_phi_target: '末端目标方位角(°)',
+  phi_target: '末端目标方位角(°)',
+  seven_L5: '第5段扭方位后稳斜段长度(m)',
+  L5: '第5段扭方位后稳斜段长度(m)',
+  seven_DLS6: '第6段井斜调整段狗腿度(°/30m)',
+  DLS6: '第6段井斜调整段狗腿度(°/30m)',
+  seven_alpha_e: '第7段末端井斜角(°)',
+  alpha_e: '第7段末端井斜角(°)',
+  seven_L7: '第7段末端稳斜段长度(m)',
+  L7: '第7段末端稳斜段长度(m)',
+  seven_phi_init: '初始方位角(°)',
+  phi_init: '初始方位角(°)'
+}
+
+export default {
+  name: 'TrajectoryDesign',
+  data () {
+    return {
+      currentStep: 0,
+      designLoading: false,
+      siteList: [...MOCK_SITES],
+      wellList: [...MOCK_WELLS],
+      form: {
+        siteId: undefined,
+        target: { e: 502.64, n: 2790.71, d: 2636.06 },
+        landingRequirement: {
+          inclinationMin: 85,
+          inclinationMax: 92,
+          azimuthMin: 40,
+          azimuthMax: 50,
+          verticalTolerance: 5,
+          horizontalTolerance: 5
+        },
+        wellhead: { e: 222, n: 2030, d: 0 },
+        neighborWellIds: [],
+        algorithm: {
+          type: 'PSO',
+          anticollisionMethod: 'SF',
+          minSafetyFactor: 1.2,
+          minKickoffDepth: 500,
+          doglegMin: 2,
+          doglegMax: 5,
+          population: 50,
+          iterations: 200,
+          safeRadius: 10
+        }
+      },
+      neighborColumns: [
+        { title: '井号', dataIndex: 'wellNo', key: 'wellNo' },
+        { title: '井口 E', dataIndex: 'e', key: 'e' },
+        { title: '井口 N', dataIndex: 'n', key: 'n' },
+        { title: '井口 D', dataIndex: 'd', key: 'd' }
+      ],
+      designResult: null,
+      paramLabels: PARAM_LABELS
+    }
+  },
+  computed: {
+    neighborWells () {
+      if (!this.form.siteId) return []
+      return this.wellList
+        .filter(w => w.siteId === this.form.siteId)
+        .map(w => ({
+          id: w.id,
+          wellNo: w.wellNo,
+          name: w.name,
+          wellhead: { e: w.wellheadE, n: w.wellheadN, d: w.wellheadD }
+        }))
+    },
+    selectedNeighborWellheads () {
+      return this.neighborWells
+        .filter(w => this.form.neighborWellIds.includes(w.id))
+        .map(w => ({
+          id: w.id,
+          wellNo: w.wellNo,
+          e: w.wellhead.e,
+          n: w.wellhead.n,
+          d: w.wellhead.d
+        }))
+    }
+  },
+  methods: {
+    nextStep () {
+      if (this.currentStep < 4) this.currentStep += 1
+    },
+    prevStep () {
+      if (this.currentStep > 0) this.currentStep -= 1
+    },
+    startDesign () {
+      this.designLoading = true
+      // 模拟后端优化 1.5s
+      setTimeout(() => {
+        this.designResult = {
+          best_solution_dict: {
+            L0: 800,
+            DLS1: 3.2,
+            alpha3: 45,
+            L3: 1200,
+            DLS_turn: 2.5,
+            L4: 300,
+            phi_target: 0.2,
+            L5: 600,
+            DLS6: 2.8,
+            alpha_e: 88.5,
+            L7: 800,
+            phi_init: 45
+          },
+          final_deviation: 0.12,
+          optimization_time: 8.5
+        }
+        this.designLoading = false
+        this.currentStep = 4
+      }, 1500)
+    },
+    resetSteps () {
+      this.currentStep = 0
+      this.designResult = null
+    },
+    saveAsDesign () {
+      this.$message.success('已保存为设计井（模拟）')
+    },
+    exportReport () {
+      this.$message.success('报告导出中（模拟）')
+    }
+  }
+}
+</script>
+
+<style lang="less" scoped>
+.steps {
+  width: 100%;
+  max-width: 100%;
+  margin: 16px 0 24px;
+  padding: 0 8px;
+}
+.steps ::v-deep .ant-steps-item {
+  flex: 1;
+  min-width: 100px;
+}
+.steps ::v-deep .ant-steps-item-title {
+  white-space: normal;
+  padding-right: 8px;
+  line-height: 1.3;
+}
+.content {
+  min-height: 320px;
+}
+.step-form {
+  max-width: 720px;
+  margin: 0 auto;
+}
+.step-desc {
+  font-size: 13px;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+.step-form .form-item-spaced {
+  margin-bottom: 18px;
+}
+.step-form .input-narrow {
+  width: 100%;
+  max-width: 200px;
+}
+.step-form .input-narrow.full-width {
+  max-width: none;
+}
+/* 所有步骤统一：左侧 label + 右侧输入，不依赖 form 布局 */
+.step-form .algo-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.step-form .algo-row.algo-row-table {
+  align-items: flex-start;
+}
+.step-form .algo-label {
+  flex-shrink: 0;
+  min-width: 180px;
+  margin: 0;
+  font-weight: normal;
+  color: rgba(0, 0, 0, 0.85);
+}
+.step-form .algo-label .required {
+  color: #f5222d;
+  margin-right: 4px;
+}
+.step-form .algo-input {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.step-form .algo-input-inner {
+  width: 100%;
+  max-width: 280px;
+}
+.step-form .algo-input-inner.algo-input-range {
+  max-width: 100px;
+}
+.step-form .algo-input-inner.algo-input-full {
+  max-width: none;
+}
+.step-form .range-sep {
+  margin: 0 10px;
+}
+.step-form .input-range {
+  max-width: 100px;
+}
+.step-form .range-sep {
+  margin: 0 10px;
+}
+.step-actions {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid #e8e8e8;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.step-actions .ant-btn + .ant-btn {
+  margin-left: 0;
+}
+.step-form .ant-divider {
+  margin: 16px 0 12px 0;
+}
+.result-actions .ant-btn + .ant-btn {
+  margin-left: 10px;
+}
+.result-actions {
+  margin-top: 16px;
+}
+.trajectory-placeholder {
+  margin-top: 24px;
+  border: 1px dashed #d9d9d9;
+  border-radius: 4px;
+  padding: 48px;
+  text-align: center;
+  background: #fafafa;
+  .placeholder-box {
+    color: rgba(0, 0, 0, 0.45);
+    p { margin: 8px 0 0; }
+    .hint { font-size: 12px; color: rgba(0, 0, 0, 0.35); }
+  }
+}
+</style>
