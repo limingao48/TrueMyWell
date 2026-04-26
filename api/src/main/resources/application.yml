@@ -23,5 +23,5 @@ spring:
   datasource:
     url: jdbc:mysql://127.0.0.1:3306/well?useUnicode=true&characterEncoding=utf-8&allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Shanghai
     username: root
-    password: 123456
+    password: Bupt@2023
     driver-class-name: com.mysql.cj.jdbc.Driver

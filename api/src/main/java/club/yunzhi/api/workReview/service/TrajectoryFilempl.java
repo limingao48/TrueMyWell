@@ -139,6 +139,20 @@ public class TrajectoryFilempl implements TrajectoryFileService {
     }
 
     @Override
+    public byte[] getLatestFileContentByWellNo(String wellNo) {
+        if (wellNo == null || wellNo.trim().isEmpty()) {
+            throw new IllegalArgumentException("wellNo不能为空");
+        }
+        TrajectoryFile trajectoryFile = trajectoryFileRepository.findFirstByWellNoOrderByIdDesc(wellNo.trim())
+                .orElseThrow(() -> new EntityNotFoundException("未找到该井的轨迹文件"));
+        byte[] fileContent = trajectoryFile.getFileContent();
+        if (fileContent == null || fileContent.length == 0) {
+            throw new EntityNotFoundException("该井轨迹文件内容为空");
+        }
+        return fileContent;
+    }
+
+    @Override
     public TrajectoryFile addWellWithFile(String wellNo, String wellName, MultipartFile file) {
         try {
             TrajectoryFile trajectoryFile = new TrajectoryFile();

@@ -27,6 +27,9 @@ public interface TrajectoryFileService {
     TrajectoryFile upload(MultipartFile file, String wellNo);
 
     String linkWell(Long id, String wellNo);
+
+    byte[] getLatestFileContentByWellNo(String wellNo);
+
     @Transactional(rollbackFor = Exception.class)
     TrajectoryFile addWellWithFile(String wellNo, String wellName, MultipartFile file);
 }
