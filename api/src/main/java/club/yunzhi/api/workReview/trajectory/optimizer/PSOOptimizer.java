@@ -4,7 +4,7 @@ import club.yunzhi.api.workReview.trajectory.WellTrajectoryConfig;
 
 import java.util.Random;
 
-public class PSOOptimizer implements TrajectoryOptimizer {
+public class PSOOptimizer implements ProgressAwareOptimizer {
 
     private static final double DEFAULT_WEIGHT = 0.7298;
     private static final double DEFAULT_C1 = 1.49618;

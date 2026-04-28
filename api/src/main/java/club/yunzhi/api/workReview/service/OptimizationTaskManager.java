@@ -10,7 +10,7 @@ import club.yunzhi.api.workReview.trajectory.WellTrajectoryConfig;
 import club.yunzhi.api.workReview.trajectory.WellTrajectoryObjective;
 import club.yunzhi.api.workReview.trajectory.optimizer.ObjectiveFunction;
 import club.yunzhi.api.workReview.trajectory.optimizer.OptimizerFactory;
-import club.yunzhi.api.workReview.trajectory.optimizer.PSOOptimizer;
+import club.yunzhi.api.workReview.trajectory.optimizer.ProgressAwareOptimizer;
 import club.yunzhi.api.workReview.trajectory.optimizer.TrajectoryOptimizer;
 import club.yunzhi.api.workReview.util.ExcelParser;
 import org.springframework.stereotype.Component;
@@ -107,6 +107,27 @@ public class OptimizationTaskManager {
         String algorithmType = "PSO";
         int population = 50;
         int iterations = 200;
+        if (request.getLandingRequirement() != null) {
+            TrajectoryDesignRequest.LandingRequirement lr = request.getLandingRequirement();
+            if (lr.getInclinationMin() != null) {
+                config.landingInclinationMin = lr.getInclinationMin();
+            }
+            if (lr.getInclinationMax() != null) {
+                config.landingInclinationMax = lr.getInclinationMax();
+            }
+            if (lr.getAzimuthMin() != null) {
+                config.landingAzimuthMin = lr.getAzimuthMin();
+            }
+            if (lr.getAzimuthMax() != null) {
+                config.landingAzimuthMax = lr.getAzimuthMax();
+            }
+            if (lr.getVerticalTolerance() != null) {
+                config.verticalTolerance = lr.getVerticalTolerance();
+            }
+            if (lr.getHorizontalTolerance() != null) {
+                config.horizontalTolerance = lr.getHorizontalTolerance();
+            }
+        }
 
         if (request.getAlgorithm() != null) {
             TrajectoryDesignRequest.Algorithm algorithm = request.getAlgorithm();
@@ -119,7 +140,41 @@ public class OptimizationTaskManager {
             if (algorithm.getIterations() != null && algorithm.getIterations() > 0) {
                 iterations = algorithm.getIterations();
             }
+            if (algorithm.getMinKickoffDepth() != null) {
+                config.sevenL0Range[0] = Math.max(0.0, algorithm.getMinKickoffDepth());
+            }
+            if (algorithm.getDoglegMin() != null) {
+                double minDogleg = Math.max(0.1, algorithm.getDoglegMin());
+                config.sevenDLS1Range[0] = minDogleg;
+                config.sevenDLSTurnRange[0] = minDogleg;
+                config.sevenDLS6Range[0] = minDogleg;
+            }
+            if (algorithm.getDoglegMax() != null) {
+                double maxDogleg = Math.max(config.sevenDLS1Range[0], algorithm.getDoglegMax());
+                config.sevenDLS1Range[1] = maxDogleg;
+                config.sevenDLSTurnRange[1] = maxDogleg;
+                config.sevenDLS6Range[1] = maxDogleg;
+            }
         }
+
+        if (config.landingInclinationMin > config.landingInclinationMax) {
+            double t = config.landingInclinationMin;
+            config.landingInclinationMin = config.landingInclinationMax;
+            config.landingInclinationMax = t;
+        }
+        config.sevenAlphaERange[0] = config.landingInclinationMin;
+        config.sevenAlphaERange[1] = config.landingInclinationMax;
+
+        if (config.landingAzimuthMin <= config.landingAzimuthMax) {
+            config.sevenPhiTargetRange[0] = config.landingAzimuthMin;
+            config.sevenPhiTargetRange[1] = config.landingAzimuthMax;
+        } else {
+            config.sevenPhiTargetRange[0] = 0.0;
+            config.sevenPhiTargetRange[1] = 360.0;
+        }
+
+        config.sevenL0Range[1] = Math.max(config.sevenL0Range[1], config.sevenL0Range[0] + 1.0);
+        config.refreshSevenSegmentBounds();
 
         WellTrajectoryObjective objective = new WellTrajectoryObjective(config);
 
@@ -129,16 +184,16 @@ public class OptimizationTaskManager {
         TrajectoryOptimizer optimizer = OptimizerFactory.getOptimizer(algorithmType);
 
         double[] bestPosition;
-        if (optimizer instanceof PSOOptimizer) {
-            bestPosition = ((PSOOptimizer) optimizer).optimize(objectiveFunc, config, bounds,
+        if (optimizer instanceof ProgressAwareOptimizer) {
+            bestPosition = ((ProgressAwareOptimizer) optimizer).optimize(objectiveFunc, config, bounds,
                     population, iterations, (iteration, total, currentBest, message) -> {
-                        progress.setIteration(iteration);
-                        progress.setTotalIterations(total);
-                        progress.setCurrentBest(currentBest);
-                        progress.setProgressPercent(iteration * 100.0 / total);
-                        progress.setMessage(message);
-                        sendProgress(taskId, progress);
-                    });
+                progress.setIteration(iteration);
+                progress.setTotalIterations(total);
+                progress.setCurrentBest(currentBest);
+                progress.setProgressPercent(iteration * 100.0 / total);
+                progress.setMessage(message);
+                sendProgress(taskId, progress);
+            });
         } else {
             bestPosition = optimizer.optimize(objectiveFunc, config, bounds, population, iterations);
         }
@@ -175,9 +230,8 @@ public class OptimizationTaskManager {
         java.util.List<TrajectoryDesignResult.WellTrajectory> neighborWells = new java.util.ArrayList<>();
 
         if (request.getNeighborWellIds() != null && !request.getNeighborWellIds().isEmpty()) {
-            for (String wellIdStr : request.getNeighborWellIds()) {
+            for (Long wellId : request.getNeighborWellIds()) {
                 try {
-                    Long wellId = Long.parseLong(wellIdStr);
                     Optional<Well> wellOpt = wellRepository.findById(wellId);
 
                     if (wellOpt.isPresent()) {
@@ -194,11 +248,17 @@ public class OptimizationTaskManager {
                             
                             // 解析Excel文件获取轨迹点
                             java.util.List<TrajectoryDesignResult.TrajectoryPoint> points = 
-                                ExcelParser.parseTrajectoryFromExcel(fileContent, trajectoryFile.getFileName());
+                                ExcelParser.parseTrajectoryFromExcel(
+                                        fileContent,
+                                        trajectoryFile.getFileName(),
+                                        well.getWellheadE(),
+                                        well.getWellheadN(),
+                                        well.getWellheadD()
+                                );
 
                             if (!points.isEmpty()) {
                                 TrajectoryDesignResult.WellTrajectory wellTrajectory = new TrajectoryDesignResult.WellTrajectory();
-                                wellTrajectory.setWellId(wellIdStr);
+                                wellTrajectory.setWellId(wellId.toString());
                                 wellTrajectory.setWellNo(wellNo);
                                 wellTrajectory.setWellName(well.getName() != null ? well.getName() : wellNo);
                                 wellTrajectory.setTrajectory_points(points);
@@ -206,8 +266,8 @@ public class OptimizationTaskManager {
                             }
                         }
                     }
-                } catch (NumberFormatException e) {
-                    // 忽略无效的井ID
+                } catch (Exception e) {
+                    // 忽略无效数据或轨迹解析异常
                 }
             }
         }

@@ -381,7 +381,6 @@ public class WellPathCalculator {
         double alpha3 = sevenSegParams[2];
         double L3 = sevenSegParams[3];
         double DLSTurn = sevenSegParams[4];
-        double L4 = sevenSegParams[5];
         double L5 = sevenSegParams[6];
         double DLS6 = sevenSegParams[7];
         double alpha_e = sevenSegParams[8];
@@ -389,93 +388,145 @@ public class WellPathCalculator {
         double phi_init = sevenSegParams[10];
         double phi_target = sevenSegParams[11];
 
-        double alpha3Rad = Math.toRadians(alpha3);
-        double alpha_eRad = Math.toRadians(alpha_e);
-        double phi_initRad = Math.toRadians(phi_init);
-        double phi_targetRad = Math.toRadians(phi_target);
+        double alpha3Clamped = Math.max(0.0, Math.min(89.0, alpha3));
+        double alphaEClamped = Math.max(0.0, Math.min(89.0, alpha_e));
+        double phiInitNorm = ((phi_init % 360.0) + 360.0) % 360.0;
+        double phiTargetNorm = ((phi_target % 360.0) + 360.0) % 360.0;
 
-        double K1 = DLS1 / 30.0;
-        double R1 = 1.0 / K1;
-        double L2 = alpha3Rad / K1;
+        double k1 = Math.max(1e-6, DLS1 / 30.0);
+        double kTurn = Math.max(1e-6, DLSTurn / 30.0);
+        double k6 = Math.max(1e-6, DLS6 / 30.0);
 
-        double K6 = DLS6 / 30.0;
-        double R6 = 1.0 / K6;
-        double deltaAlpha = Math.abs(alpha_eRad - alpha3Rad);
-        double L6 = deltaAlpha / K6;
-
-        double K_turn = DLSTurn / 30.0;
-        double R_turn = 1.0 / K_turn;
-        double deltaPhi = phi_targetRad - phi_initRad;
-        if (deltaPhi < 0) deltaPhi += 2 * Math.PI;
-
-        int nPoints = 50;
+        double L1 = Math.abs(alpha3Clamped) / k1;
+        double deltaPhiTarget = ((phiTargetNorm - phiInitNorm + 180.0) % 360.0) - 180.0;
+        double sinAlpha = Math.max(Math.sin(Math.toRadians(Math.max(alpha3Clamped, 1e-3))), 1e-3);
+        double L4Used = Math.abs(deltaPhiTarget) * sinAlpha / Math.abs(kTurn);
+        double phiAfterTurn = phiInitNorm + deltaPhiTarget;
+        double L6 = Math.abs(alphaEClamped - alpha3Clamped) / k6;
 
         List<Double> xAll = new ArrayList<>();
         List<Double> yAll = new ArrayList<>();
         List<Double> zAll = new ArrayList<>();
 
-        double x0 = config.E_wellhead;
-        double y0 = config.N_wellhead;
+        double currentE = config.E_wellhead;
+        double currentN = config.N_wellhead;
+        double currentD = config.D_wellhead;
+        xAll.add(currentE);
+        yAll.add(currentN);
+        zAll.add(currentD);
 
-        for (int i = 0; i < nPoints; i++) {
-            xAll.add(x0);
-            yAll.add(y0);
-            zAll.add(L0 * i / (nPoints - 1));
+        final double ds = 10.0;
+
+        // 1) 直井段
+        int n0 = Math.max(1, (int) Math.ceil(Math.max(0.0, L0) / ds));
+        for (int i = 0; i < n0; i++) {
+            double step = Math.max(0.0, L0) / n0;
+            currentD += step;
+            xAll.add(currentE);
+            yAll.add(currentN);
+            zAll.add(currentD);
         }
 
-        double[][] buildCoords = calculateBuildCoords(0.0, alpha3Rad, phi_initRad, R1, L2, nPoints);
-        appendSegment(xAll, yAll, zAll, buildCoords);
-
-        double[][] tangent1Coords = calculateTangentCoords(alpha3Rad, phi_initRad, L3, nPoints);
-        appendSegment(xAll, yAll, zAll, tangent1Coords);
-
-        double[][] turnCoords = calculateTurnCoords(alpha3Rad, alpha3Rad, phi_initRad, phi_targetRad, R_turn, L4, nPoints);
-        appendSegment(xAll, yAll, zAll, turnCoords);
-
-        double[][] tangent2Coords = calculateTangentCoords(alpha3Rad, phi_targetRad, L5, nPoints);
-        appendSegment(xAll, yAll, zAll, tangent2Coords);
-
-        double alphaStart6 = alpha3Rad;
-        double alphaEnd6 = alpha_eRad;
-        double[][] build2Coords = calculateBuildCoords(alphaStart6, alphaEnd6, phi_targetRad, R6, L6, nPoints);
-        appendSegment(xAll, yAll, zAll, build2Coords);
-
-        double[][] tangent3Coords = calculateTangentCoords(alpha_eRad, phi_targetRad, L7, nPoints);
-        appendSegment(xAll, yAll, zAll, tangent3Coords);
-
-        double[] x = new double[xAll.size()];
-        double[] y = new double[yAll.size()];
-        double[] z = new double[zAll.size()];
-        for (int i = 0; i < xAll.size(); i++) {
-            x[i] = xAll.get(i);
-            y[i] = yAll.get(i);
-            z[i] = zAll.get(i);
+        // 2) 增斜段
+        int n1 = Math.max(1, (int) Math.ceil(Math.max(0.0, L1) / ds));
+        for (int i = 1; i <= n1; i++) {
+            double frac = (double) i / n1;
+            double incDeg = alpha3Clamped * frac;
+            double step = Math.max(0.0, L1) / n1;
+            double incRad = Math.toRadians(incDeg);
+            double aziRad = Math.toRadians(phiInitNorm);
+            currentN += step * Math.sin(incRad) * Math.cos(aziRad);
+            currentE += step * Math.sin(incRad) * Math.sin(aziRad);
+            currentD += step * Math.cos(incRad);
+            xAll.add(currentE);
+            yAll.add(currentN);
+            zAll.add(currentD);
         }
 
-        double totalLength = L0 + L2 + L3 + L4 + L5 + L6 + L7;
+        // 3) 稳斜段
+        int n3 = Math.max(1, (int) Math.ceil(Math.max(0.0, L3) / ds));
+        for (int i = 0; i < n3; i++) {
+            double step = Math.max(0.0, L3) / n3;
+            double incRad = Math.toRadians(alpha3Clamped);
+            double aziRad = Math.toRadians(phiInitNorm);
+            currentN += step * Math.sin(incRad) * Math.cos(aziRad);
+            currentE += step * Math.sin(incRad) * Math.sin(aziRad);
+            currentD += step * Math.cos(incRad);
+            xAll.add(currentE);
+            yAll.add(currentN);
+            zAll.add(currentD);
+        }
+
+        // 4) 扭方位段（长度由 phi_target 推导）
+        int n4 = Math.max(1, (int) Math.ceil(Math.max(0.0, L4Used) / ds));
+        for (int i = 1; i <= n4; i++) {
+            double frac = (double) i / n4;
+            double aziDeg = phiInitNorm + deltaPhiTarget * frac;
+            double step = Math.max(0.0, L4Used) / n4;
+            double incRad = Math.toRadians(alpha3Clamped);
+            double aziRad = Math.toRadians(aziDeg);
+            currentN += step * Math.sin(incRad) * Math.cos(aziRad);
+            currentE += step * Math.sin(incRad) * Math.sin(aziRad);
+            currentD += step * Math.cos(incRad);
+            xAll.add(currentE);
+            yAll.add(currentN);
+            zAll.add(currentD);
+        }
+
+        // 5) 稳斜段
+        int n5 = Math.max(1, (int) Math.ceil(Math.max(0.0, L5) / ds));
+        for (int i = 0; i < n5; i++) {
+            double step = Math.max(0.0, L5) / n5;
+            double incRad = Math.toRadians(alpha3Clamped);
+            double aziRad = Math.toRadians(phiAfterTurn);
+            currentN += step * Math.sin(incRad) * Math.cos(aziRad);
+            currentE += step * Math.sin(incRad) * Math.sin(aziRad);
+            currentD += step * Math.cos(incRad);
+            xAll.add(currentE);
+            yAll.add(currentN);
+            zAll.add(currentD);
+        }
+
+        // 6) 井斜调整段
+        int n6 = Math.max(1, (int) Math.ceil(Math.max(0.0, L6) / ds));
+        for (int i = 1; i <= n6; i++) {
+            double frac = (double) i / n6;
+            double incDeg = alpha3Clamped + (alphaEClamped - alpha3Clamped) * frac;
+            double step = Math.max(0.0, L6) / n6;
+            double incRad = Math.toRadians(incDeg);
+            double aziRad = Math.toRadians(phiAfterTurn);
+            currentN += step * Math.sin(incRad) * Math.cos(aziRad);
+            currentE += step * Math.sin(incRad) * Math.sin(aziRad);
+            currentD += step * Math.cos(incRad);
+            xAll.add(currentE);
+            yAll.add(currentN);
+            zAll.add(currentD);
+        }
+
+        // 7) 末端稳斜段
+        int n7 = Math.max(1, (int) Math.ceil(Math.max(0.0, L7) / ds));
+        for (int i = 0; i < n7; i++) {
+            double step = Math.max(0.0, L7) / n7;
+            double incRad = Math.toRadians(alphaEClamped);
+            double aziRad = Math.toRadians(phiAfterTurn);
+            currentN += step * Math.sin(incRad) * Math.cos(aziRad);
+            currentE += step * Math.sin(incRad) * Math.sin(aziRad);
+            currentD += step * Math.cos(incRad);
+            xAll.add(currentE);
+            yAll.add(currentN);
+            zAll.add(currentD);
+        }
+
+        double[] x = xAll.stream().mapToDouble(Double::doubleValue).toArray();
+        double[] y = yAll.stream().mapToDouble(Double::doubleValue).toArray();
+        double[] z = zAll.stream().mapToDouble(Double::doubleValue).toArray();
+
+        double totalLength = Math.max(0.0, L0) + Math.max(0.0, L1) + Math.max(0.0, L3)
+                + Math.max(0.0, L4Used) + Math.max(0.0, L5) + Math.max(0.0, L6) + Math.max(0.0, L7);
 
         int jumpCount = detectDirectionJump(y, x, z, 10.0);
         double lossJump = jumpCount > 0 ? jumpCount * 100000.0 : 0.0;
 
         return new CoordinateResult(new double[][]{x, y, z}, totalLength, true, lossJump);
-    }
-
-    private void appendSegment(List<Double> xAll, List<Double> yAll, List<Double> zAll, double[][] coords) {
-        if (xAll.isEmpty()) {
-            for (int i = 0; i < coords[0].length; i++) {
-                xAll.add(coords[0][i]);
-                yAll.add(coords[1][i]);
-                zAll.add(coords[2][i]);
-            }
-        } else {
-            double xLast = xAll.get(xAll.size() - 1);
-            double yLast = yAll.get(yAll.size() - 1);
-            double zLast = zAll.get(zAll.size() - 1);
-            for (int i = 1; i < coords[0].length; i++) {
-                xAll.add(xLast + coords[0][i]);
-                yAll.add(yLast + coords[1][i]);
-                zAll.add(zLast + coords[2][i]);
-            }
-        }
     }
 }

@@ -97,41 +97,76 @@ public class WellTrajectoryObjective {
             return 1e20;
         }
 
-        double penalty = 0;
-
-        if (result.loss > 0) {
-            penalty += result.loss * 1000;
-        }
-
-        for (WellObstacleDetector wellObstacle : wellObstacles) {
-            if (wellObstacle != null) {
-                double wellCollisionPenalty = wellObstacle.getCollisionPenalty(result.points);
-                penalty += wellCollisionPenalty;
-                if (wellCollisionPenalty >= 1e20) {
-                    return penalty;
-                }
-            }
-        }
-
         double[] finalPoint = new double[]{
             result.points[0][result.points[0].length - 1],
             result.points[1][result.points[1].length - 1],
             result.points[2][result.points[2].length - 1]
         };
 
-        double targetDeviation = Math.sqrt(
-            Math.pow(finalPoint[0] - config.E_target, 2) +
-            Math.pow(finalPoint[1] - config.N_target, 2) +
-            Math.pow(finalPoint[2] - config.D_target, 2)
+        double verticalDeviation = Math.abs(finalPoint[2] - config.D_target);
+        double horizontalDeviation = Math.sqrt(
+                Math.pow(finalPoint[0] - config.E_target, 2) +
+                Math.pow(finalPoint[1] - config.N_target, 2)
         );
+        double collisionPenalty = calculateCollisionPenalty(result.points);
 
-        if (targetDeviation > config.targetDeviationThreshold) {
-            targetDeviation = targetDeviation * config.targetDeviationPenalty;
+        if (!isLandingConstraintsSatisfied(sevenSegParams)) {
+            return 1e20 + collisionPenalty;
         }
 
-        double objectiveValue = targetDeviation + result.totalLength + penalty;
+        boolean hitTarget = horizontalDeviation <= config.horizontalTolerance && verticalDeviation <= config.verticalTolerance;
+        if (!hitTarget) {
+            double excessH = Math.max(0.0, horizontalDeviation - config.horizontalTolerance);
+            double excessV = Math.max(0.0, verticalDeviation - config.verticalTolerance);
+            return config.targetDeviationPenalty * (excessH * excessH + excessV * excessV + 0.1) + collisionPenalty;
+        }
 
-        return objectiveValue;
+        return result.totalLength + collisionPenalty;
+    }
+
+    private boolean isLandingConstraintsSatisfied(double[] sevenSegParams) {
+        double alphaE = sevenSegParams[8];
+        double phiTarget = normalizeAzimuth(sevenSegParams[11]);
+        if (alphaE < config.landingInclinationMin || alphaE > config.landingInclinationMax) {
+            return false;
+        }
+        return isAzimuthInRange(phiTarget, config.landingAzimuthMin, config.landingAzimuthMax);
+    }
+
+    private double normalizeAzimuth(double azimuth) {
+        double a = azimuth % 360.0;
+        if (a < 0) {
+            a += 360.0;
+        }
+        return a;
+    }
+
+    private boolean isAzimuthInRange(double value, double min, double max) {
+        double v = normalizeAzimuth(value);
+        double mn = normalizeAzimuth(min);
+        double mx = normalizeAzimuth(max);
+        if (mn <= mx) {
+            return v >= mn && v <= mx;
+        }
+        return v >= mn || v <= mx;
+    }
+
+    private double calculateCollisionPenalty(double[][] trajectory) {
+        double totalPenalty = 0.0;
+        for (WellObstacleDetector wellObstacle : wellObstacles) {
+            if (wellObstacle == null) {
+                continue;
+            }
+            double dMin = wellObstacle.minHorizontalDistanceScan(trajectory);
+            if (!Double.isFinite(dMin)) {
+                continue;
+            }
+            double safe = wellObstacle.getSafetyRadius();
+            if (dMin < safe) {
+                totalPenalty += 1e24 + 1e8 * Math.pow(safe - dMin + 1.0, 2);
+            }
+        }
+        return totalPenalty;
     }
 
     public Map<String, Object> getTrajectoryInfo(double[] positionTuple) {
