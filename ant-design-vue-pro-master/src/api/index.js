@@ -64,7 +64,10 @@ const API = {
     addWellWithFile: '/trajectoryFile/addWellWithFile',
 
     // 轨迹设计
-    designTrajectory: '/trajectory/design'
+    designTrajectory: '/trajectory/design',
+    startDesign: '/trajectory/design/start',
+    getDesignProgress: '/trajectory/design/progress/',
+    getDesignStatus: '/trajectory/design/status/'
   }
 }
 
@@ -608,6 +611,40 @@ export const drillingAPI = {
       url: API.drilling.designTrajectory,
       method: 'post',
       data
+    })
+  },
+
+  /**
+   * 启动轨迹设计任务（支持实时进度）
+   * @param {Object} data - 轨迹设计参数
+   * @returns {Promise<string>} 任务ID
+   */
+  startDesign (data) {
+    return request({
+      url: API.drilling.startDesign,
+      method: 'post',
+      data
+    })
+  },
+
+  /**
+   * 创建进度事件源
+   * @param {string} taskId - 任务ID
+   * @returns {EventSource} 事件源对象
+   */
+  createProgressEventSource (taskId) {
+    return new EventSource(`${API.drilling.getDesignProgress}${taskId}`)
+  },
+
+  /**
+   * 获取设计任务状态
+   * @param {string} taskId - 任务ID
+   * @returns {Promise<Object>} 任务状态
+   */
+  getDesignStatus (taskId) {
+    return request({
+      url: `${API.drilling.getDesignStatus}${taskId}`,
+      method: 'get'
     })
   }
 }

@@ -344,12 +344,21 @@
               <span>优化耗时：{{ designResult.optimization_time }} s</span>
             </a-space>
           </div>
-          <div v-if="designResult" class="trajectory-placeholder">
-            <div class="placeholder-box">
-              <a-icon type="line-chart" style="font-size: 48px; color: #1890ff" />
-              <p>3D 轨迹图（含邻井叠加）</p>
-              <p class="hint">对接后端轨迹点(E,N,D)后可接入 ECharts 3D / Three.js 渲染</p>
+          <div v-if="designResult" class="trajectory-chart">
+            <div class="chart-header">
+              <h4>3D 轨迹图（含邻井叠加）</h4>
+              <div class="legend">
+                <span class="legend-item">
+                  <span class="legend-color" style="background-color: #1890ff"></span>
+                  <span>设计井</span>
+                </span>
+                <span v-for="(well, index) in designResult.neighbor_wells" :key="well.wellId" class="legend-item">
+                  <span class="legend-color" :style="{ backgroundColor: getNeighborColor(index) }"></span>
+                  <span>{{ well.wellName }}</span>
+                </span>
+              </div>
             </div>
+            <div ref="trajectoryChart" class="chart-container"></div>
           </div>
           <div v-if="designResult" class="result-actions">
             <a-button type="primary" icon="save" @click="saveAsDesign">保存为设计井</a-button>
@@ -363,14 +372,49 @@
         </div>
       </div>
     </a-card>
+
+    <!-- 优化进度弹窗 -->
+    <a-modal
+      v-if="showProgressModal"
+      title="轨迹设计优化中"
+      :visible="showProgressModal"
+      :closable="false"
+      :maskClosable="false"
+      :footer="null"
+      width="520px"
+    >
+      <div class="progress-container">
+        <div class="progress-header">
+          <a-spin :spinning="true" size="large" tip="优化进行中..." />
+        </div>
+        <div class="progress-info">
+          <p class="progress-message">{{ progressInfo.message || '初始化...' }}</p>
+          <div class="progress-row">
+            <span class="progress-label">迭代进度：</span>
+            <span class="progress-value">{{ progressInfo.iteration || 0 }} / {{ progressInfo.totalIterations || 0 }}</span>
+          </div>
+          <div class="progress-row">
+            <span class="progress-label">当前最优值：</span>
+            <span class="progress-value">{{ progressInfo.currentBest !== undefined ? progressInfo.currentBest.toFixed(2) : '-' }}</span>
+          </div>
+        </div>
+        <a-progress
+          :percent="Math.round(progressInfo.progressPercent || 0)"
+          :show-info="false"
+          stroke-color="#1890ff"
+        />
+        <div class="progress-percent">{{ Math.round(progressInfo.progressPercent || 0) }}%</div>
+      </div>
+    </a-modal>
   </page-header-wrapper>
 </template>
 
 <script>
 import { drillingAPI } from '@/api'
 import TrajectoryDesignRequest from '@/entity/TrajectoryDesignRequest'
+import * as echarts from 'echarts'
+import 'echarts-gl'
 
-// 七段式 12 参数中文标签（与后端 DLS 统一 °/30m 一致）
 const PARAM_LABELS = {
   seven_L0: '第1段直井段长度(m)',
   L0: '第1段直井段长度(m)',
@@ -438,7 +482,17 @@ export default {
         { title: '井口 D', dataIndex: 'd', key: 'd' }
       ],
       designResult: null,
-      paramLabels: PARAM_LABELS
+      paramLabels: PARAM_LABELS,
+      showProgressModal: false,
+      progressInfo: {
+        iteration: 0,
+        totalIterations: 0,
+        currentBest: undefined,
+        progressPercent: 0,
+        message: ''
+      },
+      pollingInterval: null,
+      currentTaskId: null
     }
   },
   watch: {
@@ -453,6 +507,9 @@ export default {
   },
   created () {
     this.loadSiteList()
+  },
+  beforeUnmount () {
+    this.closePolling()
   },
   computed: {
     neighborWells () {
@@ -510,24 +567,206 @@ export default {
     prevStep () {
       if (this.currentStep > 0) this.currentStep -= 1
     },
-    startDesign () {
+    async startDesign () {
       this.designLoading = true
-      // 使用实体类封装请求参数
-      const request = TrajectoryDesignRequest.fromForm(this.form)
-      drillingAPI.designTrajectory(request.toRequest())
-        .then((res) => {
-          this.designResult = res.data || res
-          this.designLoading = false
-          this.currentStep = 4
-        })
-        .catch((err) => {
-          this.$message.error('轨迹设计失败：' + (err.message || '未知错误'))
-          this.designLoading = false
-        })
+      this.showProgressModal = true
+      this.progressInfo = {
+        iteration: 0,
+        totalIterations: this.form.algorithm.iterations || 200,
+        currentBest: undefined,
+        progressPercent: 0,
+        message: '正在初始化优化任务...'
+      }
+
+      try {
+        const request = TrajectoryDesignRequest.fromForm(this.form)
+
+        const taskId = await drillingAPI.startDesign(request.toRequest())
+        this.currentTaskId = taskId
+
+        this.startPolling(taskId)
+      } catch (err) {
+        this.handleDesignError(err)
+      }
+    },
+    startPolling (taskId) {
+      this.closePolling()
+
+      this.pollingInterval = setInterval(async () => {
+        try {
+          const progress = await drillingAPI.getDesignStatus(taskId)
+          this.progressInfo = {
+            iteration: progress.iteration || 0,
+            totalIterations: progress.totalIterations || this.form.algorithm.iterations || 200,
+            currentBest: progress.currentBest,
+            progressPercent: progress.progressPercent || 0,
+            message: progress.message || '优化进行中...'
+          }
+
+          if (progress.completed) {
+            this.closePolling()
+            if (progress.result) {
+              this.handleDesignSuccess(progress.result)
+            } else {
+              this.handleDesignError(new Error('优化任务已完成，但未返回结果'))
+            }
+          }
+        } catch (err) {
+          this.closePolling()
+          this.handleDesignError(err)
+        }
+      }, 500)
+    },
+    handleDesignError (err) {
+      this.closePolling()
+      this.showProgressModal = false
+      this.designLoading = false
+      this.$message.error('轨迹设计失败：' + (err.message || '未知错误'))
+    },
+    closePolling () {
+      if (this.pollingInterval) {
+        clearInterval(this.pollingInterval)
+        this.pollingInterval = null
+      }
     },
     resetSteps () {
+      this.closePolling()
       this.currentStep = 0
       this.designResult = null
+      this.showProgressModal = false
+      this.progressInfo = {
+        iteration: 0,
+        totalIterations: 0,
+        currentBest: undefined,
+        progressPercent: 0,
+        message: ''
+      }
+    },
+    getNeighborColor (index) {
+      const colors = ['#52c41a', '#f5222d', '#faad14', '#722ed1', '#13c2c2', '#eb2f96']
+      return colors[index % colors.length]
+    },
+    initTrajectoryChart () {
+      if (!this.designResult || !this.$refs.trajectoryChart) return
+
+      const el = this.$refs.trajectoryChart
+      if (this.trajectoryChart) this.trajectoryChart.dispose()
+      this.trajectoryChart = echarts.init(el)
+
+      const colors = ['#1890ff', '#52c41a', '#fa8c16', '#eb2f96', '#722ed1', '#13c2c2', '#faad14', '#f5222d']
+      const seriesList = []
+
+      // 添加设计井轨迹
+      if (this.designResult.trajectory_points && this.designResult.trajectory_points.length > 0) {
+        const points = this.designResult.trajectory_points.map(p => [p.x, p.y, p.z])
+        seriesList.push({
+          wellName: '设计井',
+          points: points
+        })
+      }
+
+      // 添加邻井轨迹
+      if (this.designResult.neighbor_wells && this.designResult.neighbor_wells.length > 0) {
+        console.log('邻井数量:', this.designResult.neighbor_wells.length)
+        this.designResult.neighbor_wells.forEach((well, index) => {
+          if (well.trajectory_points && well.trajectory_points.length > 0) {
+            console.log('邻井', index + 1, ':', well.wellName, '点数量:', well.trajectory_points.length)
+            const points = well.trajectory_points.map(p => [p.x, p.y, p.z])
+            seriesList.push({
+              wellName: well.wellName,
+              points: points
+            })
+          }
+        })
+      } else {
+        console.log('没有邻井数据')
+      }
+
+      const series = seriesList.map((item, i) => {
+        const color = colors[i % colors.length]
+        const data = item.points.map(p => [p[0], p[1], -p[2]])
+        return {
+          type: 'line3D',
+          name: item.wellName,
+          data,
+          lineStyle: { width: i === 0 ? 4 : 2, color, opacity: i === 0 ? 1 : 0.7 },
+          itemStyle: { opacity: 0.8 },
+          emphasis: {
+            lineStyle: { width: 6 }
+          }
+        }
+      })
+
+      const option = {
+        tooltip: {
+          formatter: (params) => {
+            const data = params.value
+            return `<strong>${params.seriesName}</strong><br/>
+              E: ${data[0].toFixed(2)} m<br/>
+              N: ${data[1].toFixed(2)} m<br/>
+              D: ${-data[2].toFixed(2)} m`
+          }
+        },
+        legend: {
+          data: series.map(s => s.name),
+          bottom: 0,
+          itemWidth: 12,
+          itemHeight: 12,
+          textStyle: { fontSize: 12 }
+        },
+        backgroundColor: '#fff',
+        xAxis3D: {
+          type: 'value',
+          name: 'E',
+          nameTextStyle: { fontSize: 12 },
+          axisLabel: { fontSize: 10 }
+        },
+        yAxis3D: {
+          type: 'value',
+          name: 'N',
+          nameTextStyle: { fontSize: 12 },
+          axisLabel: { fontSize: 10 }
+        },
+        zAxis3D: {
+          type: 'value',
+          name: 'D',
+          nameTextStyle: { fontSize: 12 },
+          axisLabel: { fontSize: 10 }
+        },
+        grid3D: {
+          viewControl: {
+            autoRotate: true,
+            autoRotateSpeed: 2,
+            rotateSensitivity: 1,
+            zoomSensitivity: 1
+          },
+          axisPointer: { show: true },
+          light: {
+            main: { intensity: 1.2 },
+            ambient: { intensity: 0.3 }
+          }
+        },
+        series
+      }
+
+      this.trajectoryChart.setOption(option)
+
+      window.addEventListener('resize', () => {
+        if (this.trajectoryChart) this.trajectoryChart.resize()
+      })
+    },
+    handleDesignSuccess (result) {
+      this.closePolling()
+      this.designResult = result
+      this.designLoading = false
+      this.showProgressModal = false
+      this.currentStep = 4
+      this.$message.success('轨迹设计完成')
+
+      // 延迟初始化图表，确保DOM已渲染
+      setTimeout(() => {
+        this.initTrajectoryChart()
+      }, 300)
     },
     saveAsDesign () {
       this.$message.success('已保存为设计井（模拟）')
@@ -577,7 +816,6 @@ export default {
 .step-form .input-narrow.full-width {
   max-width: none;
 }
-/* 所有步骤统一：左侧 label + 右侧输入，不依赖 form 布局 */
 .step-form .algo-row {
   display: flex;
   align-items: center;
@@ -644,17 +882,79 @@ export default {
 .result-actions {
   margin-top: 16px;
 }
-.trajectory-placeholder {
+.trajectory-chart {
   margin-top: 24px;
-  border: 1px dashed #d9d9d9;
+  border: 1px solid #e8e8e8;
   border-radius: 4px;
-  padding: 48px;
-  text-align: center;
-  background: #fafafa;
-  .placeholder-box {
-    color: rgba(0, 0, 0, 0.45);
-    p { margin: 8px 0 0; }
-    .hint { font-size: 12px; color: rgba(0, 0, 0, 0.35); }
+  background: #fff;
+}
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e8e8e8;
+  h4 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: rgba(0, 0, 0, 0.85);
   }
+}
+.legend {
+  display: flex;
+  gap: 16px;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.65);
+}
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+.chart-container {
+  width: 100%;
+  height: 400px;
+}
+
+.progress-container {
+  padding: 16px;
+}
+.progress-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+.progress-info {
+  margin-bottom: 16px;
+}
+.progress-message {
+  text-align: center;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.85);
+  margin-bottom: 12px;
+}
+.progress-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.progress-label {
+  color: rgba(0, 0, 0, 0.65);
+}
+.progress-value {
+  color: rgba(0, 0, 0, 0.85);
+  font-weight: 500;
+}
+.progress-percent {
+  text-align: center;
+  font-size: 14px;
+  color: #1890ff;
+  margin-top: 8px;
 }
 </style>
