@@ -24,6 +24,12 @@ public class WellTrajectoryConfig {
     public double safetyRadius = 10.0;
     public double targetDeviationThreshold = 30.0;
     public double targetDeviationPenalty = 100000.0;
+    public double verticalTolerance = 5.0;
+    public double horizontalTolerance = 5.0;
+    public double landingInclinationMin = 85.0;
+    public double landingInclinationMax = 90.0;
+    public double landingAzimuthMin = 0.0;
+    public double landingAzimuthMax = 360.0;
 
     public double[] sevenL0Range = {500.0, 2500.0};
     public double[] sevenDLS1Range = {1.0, 6.0};
@@ -66,6 +72,20 @@ public class WellTrajectoryConfig {
     public double[][] BOUNDS;
 
     public WellTrajectoryConfig() {
+        refreshSevenSegmentBounds();
+        BOUNDS = new double[][] {
+            {D_kop_min, D_kop_max},
+            {alpha_1_min, alpha_1_max},
+            {alpha_2_min, alpha_2_max},
+            {phi_1_min, phi_1_max},
+            {phi_2_min, phi_2_max},
+            {R_1_min, R_1_max},
+            {R_2_min, R_2_max},
+            {D_turn_kop_min, D_turn_kop_max}
+        };
+    }
+
+    public void refreshSevenSegmentBounds() {
         SEVEN_SEG_BOUNDS_DICT = new HashMap<>();
         SEVEN_SEG_BOUNDS_DICT.put("L0", sevenL0Range);
         SEVEN_SEG_BOUNDS_DICT.put("DLS1", sevenDLS1Range);
@@ -84,17 +104,6 @@ public class WellTrajectoryConfig {
         for (int i = 0; i < SEVEN_SEG_PARAM_NAMES.length; i++) {
             SEVEN_SEG_BOUNDS[i] = SEVEN_SEG_BOUNDS_DICT.get(SEVEN_SEG_PARAM_NAMES[i]);
         }
-
-        BOUNDS = new double[][] {
-            {D_kop_min, D_kop_max},
-            {alpha_1_min, alpha_1_max},
-            {alpha_2_min, alpha_2_max},
-            {phi_1_min, phi_1_max},
-            {phi_2_min, phi_2_max},
-            {R_1_min, R_1_max},
-            {R_2_min, R_2_max},
-            {D_turn_kop_min, D_turn_kop_max}
-        };
     }
 
     public boolean validateParameters(double[] positionTuple) {
@@ -124,12 +133,6 @@ public class WellTrajectoryConfig {
             if (!(SEVEN_SEG_BOUNDS[i][0] <= params[i] && params[i] <= SEVEN_SEG_BOUNDS[i][1])) {
                 return false;
             }
-        }
-
-        double alpha3 = params[2];
-        double alpha_e = params[8];
-        if (!(0.0 <= alpha3 && alpha3 <= 89.0 && 0.0 <= alpha_e && alpha_e <= 89.0)) {
-            return false;
         }
 
         return true;

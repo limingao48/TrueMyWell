@@ -491,6 +491,8 @@ export default {
         progressPercent: 0,
         message: ''
       },
+      trajectoryChart: null,
+      trajectoryChartResizeHandler: null,
       pollingInterval: null,
       currentTaskId: null
     }
@@ -503,6 +505,11 @@ export default {
         return
       }
       this.loadWellsBySite(newSiteId)
+    },
+    currentStep (step) {
+      if (step !== 4) {
+        this.destroyTrajectoryChart()
+      }
     }
   },
   created () {
@@ -510,6 +517,7 @@ export default {
   },
   beforeUnmount () {
     this.closePolling()
+    this.destroyTrajectoryChart()
   },
   computed: {
     neighborWells () {
@@ -629,8 +637,19 @@ export default {
         this.pollingInterval = null
       }
     },
+    destroyTrajectoryChart () {
+      if (this.trajectoryChart) {
+        this.trajectoryChart.dispose()
+        this.trajectoryChart = null
+      }
+      if (this.trajectoryChartResizeHandler) {
+        window.removeEventListener('resize', this.trajectoryChartResizeHandler)
+        this.trajectoryChartResizeHandler = null
+      }
+    },
     resetSteps () {
       this.closePolling()
+      this.destroyTrajectoryChart()
       this.currentStep = 0
       this.designResult = null
       this.showProgressModal = false
@@ -650,7 +669,7 @@ export default {
       if (!this.designResult || !this.$refs.trajectoryChart) return
 
       const el = this.$refs.trajectoryChart
-      if (this.trajectoryChart) this.trajectoryChart.dispose()
+      this.destroyTrajectoryChart()
       this.trajectoryChart = echarts.init(el)
 
       const colors = ['#1890ff', '#52c41a', '#fa8c16', '#eb2f96', '#722ed1', '#13c2c2', '#faad14', '#f5222d']
@@ -735,8 +754,7 @@ export default {
         },
         grid3D: {
           viewControl: {
-            autoRotate: true,
-            autoRotateSpeed: 2,
+            autoRotate: false,
             rotateSensitivity: 1,
             zoomSensitivity: 1
           },
@@ -751,9 +769,10 @@ export default {
 
       this.trajectoryChart.setOption(option)
 
-      window.addEventListener('resize', () => {
+      this.trajectoryChartResizeHandler = () => {
         if (this.trajectoryChart) this.trajectoryChart.resize()
-      })
+      }
+      window.addEventListener('resize', this.trajectoryChartResizeHandler)
     },
     handleDesignSuccess (result) {
       this.closePolling()
