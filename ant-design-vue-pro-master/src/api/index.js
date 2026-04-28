@@ -61,7 +61,10 @@ const API = {
     deleteTrajectoryFile: '/trajectoryFile/delete',
     uploadTrajectoryFile: '/trajectoryFile/upload',
     linkWellTrajectory: '/trajectoryFile/linkWell',
-    addWellWithFile: '/trajectoryFile/addWellWithFile'
+    addWellWithFile: '/trajectoryFile/addWellWithFile',
+
+    // 轨迹设计
+    designTrajectory: '/trajectory/design'
   }
 }
 
@@ -557,6 +560,7 @@ export const drillingAPI = {
       responseType: 'arraybuffer'
     })
   },
+
   getWellTrajectoryTemplate () {
     return request({
       url: API.drilling.getWellTrajectoryTemplate,
@@ -564,23 +568,47 @@ export const drillingAPI = {
       responseType: 'arraybuffer'
     })
   },
+
   getTrajectoryFiles () {
     return request({ url: API.drilling.getTrajectoryFiles, method: 'get' })
   },
+
   uploadTrajectoryFile (file, wellNo) {
     const fd = new FormData()
     fd.append('file', file)
     if (wellNo) fd.append('wellNo', wellNo)
     return request({ url: API.drilling.uploadTrajectoryFile, method: 'post', data: fd })
   },
+
   linkWellTrajectory (id, wellNo) {
     return request({ url: API.drilling.linkWellTrajectory, method: 'put', params: { id, wellNo } })
   },
+
   deleteTrajectoryFile (id) {
     return request({ url: API.drilling.deleteTrajectoryFile, method: 'delete', params: { id } })
   },
+
   addWellWithFile (formData) {
     return request({ url: API.drilling.addWellWithFile, method: 'post', data: formData })
+  },
+
+  /**
+   * 轨迹设计
+   * @param {Object} data - 轨迹设计参数
+   * @param {string} data.siteId - 井场ID
+   * @param {Object} data.target - 靶点坐标 { e, n, d }
+   * @param {Object} data.landingRequirement - 入靶需求
+   * @param {Object} data.wellhead - 井口坐标 { e, n, d }
+   * @param {Array} data.neighborWellIds - 邻井ID列表
+   * @param {Object} data.algorithm - 算法参数
+   * @returns {Promise<Object>} 设计结果
+   */
+  designTrajectory (data) {
+    return request({
+      url: API.drilling.designTrajectory,
+      method: 'post',
+      data
+    })
   }
 }
 

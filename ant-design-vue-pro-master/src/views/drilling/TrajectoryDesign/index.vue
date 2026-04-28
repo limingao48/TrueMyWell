@@ -368,6 +368,7 @@
 
 <script>
 import { drillingAPI } from '@/api'
+import TrajectoryDesignRequest from '@/entity/TrajectoryDesignRequest'
 
 // 七段式 12 参数中文标签（与后端 DLS 统一 °/30m 一致）
 const PARAM_LABELS = {
@@ -511,29 +512,18 @@ export default {
     },
     startDesign () {
       this.designLoading = true
-      // 模拟后端优化 1.5s
-      setTimeout(() => {
-        this.designResult = {
-          best_solution_dict: {
-            L0: 800,
-            DLS1: 3.2,
-            alpha3: 45,
-            L3: 1200,
-            DLS_turn: 2.5,
-            L4: 300,
-            phi_target: 0.2,
-            L5: 600,
-            DLS6: 2.8,
-            alpha_e: 88.5,
-            L7: 800,
-            phi_init: 45
-          },
-          final_deviation: 0.12,
-          optimization_time: 8.5
-        }
-        this.designLoading = false
-        this.currentStep = 4
-      }, 1500)
+      // 使用实体类封装请求参数
+      const request = TrajectoryDesignRequest.fromForm(this.form)
+      drillingAPI.designTrajectory(request.toRequest())
+        .then((res) => {
+          this.designResult = res.data || res
+          this.designLoading = false
+          this.currentStep = 4
+        })
+        .catch((err) => {
+          this.$message.error('轨迹设计失败：' + (err.message || '未知错误'))
+          this.designLoading = false
+        })
     },
     resetSteps () {
       this.currentStep = 0

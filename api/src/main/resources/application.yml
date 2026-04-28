@@ -21,7 +21,8 @@ spring:
     activate:
       on-profile: pro
   datasource:
-    url: jdbc:mysql://127.0.0.1:3306/well?useUnicode=true&characterEncoding=utf-8&allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Shanghai
+  # 3307=301=Bupt@2023 lab-bendi-3306-Bupt@2023
+    url: jdbc:mysql://127.0.0.1:3307/well?useUnicode=true&characterEncoding=utf-8&allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Shanghai
     username: root
     password: Bupt@2023
     driver-class-name: com.mysql.cj.jdbc.Driver
