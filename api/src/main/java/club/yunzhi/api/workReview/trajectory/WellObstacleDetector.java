@@ -2,6 +2,10 @@ package club.yunzhi.api.workReview.trajectory;
 
 import java.util.*;
 
+/**
+ * 邻井轨迹障碍物：在重叠垂深范围内按步长扫描，计算与设计轨迹之间的最小井眼中心距（CTC 扫描）。
+ * 设计轨迹可为 {@code [3][n]}（E/N/D 分行）或 {@code [n][3]}（逐点）格式。
+ */
 public class WellObstacleDetector {
     private double[][] wellTrajectory;
     private double safetyRadius;
@@ -9,12 +13,97 @@ public class WellObstacleDetector {
     private List<Map<String, double[]>> segmentBounds;
 
     public WellObstacleDetector(double[][] wellTrajectory, double safetyRadius) {
-        this.wellTrajectory = wellTrajectory;
+        this.wellTrajectory = normalizeRowPoints(wellTrajectory);
         this.safetyRadius = safetyRadius;
-        if (wellTrajectory != null) {
+        if (this.wellTrajectory != null) {
             createWellSegments(10.0);
             calculateSegmentBounds();
         }
+    }
+
+    /** 将 [3][n] 或 [n][3] 统一为按垂深递增的 [n][3]，便于插值 */
+    public static double[][] normalizeRowPoints(double[][] traj) {
+        if (traj == null || traj.length == 0) {
+            return traj;
+        }
+        // 设计轨迹多为 [3][n]（E/N/D）；邻井多为 [n][3]。长度均为 3 时按列格式处理（与本项目计算器输出一致）。
+        if (traj.length == 3 && traj[0] != null && traj[1] != null && traj[2] != null
+                && traj[0].length == traj[1].length && traj[1].length == traj[2].length && traj[0].length > 0) {
+            int n = traj[0].length;
+            double[][] rows = new double[n][3];
+            for (int i = 0; i < n; i++) {
+                rows[i][0] = traj[0][i];
+                rows[i][1] = traj[1][i];
+                rows[i][2] = traj[2][i];
+            }
+            return sortByDepthAscending(rows);
+        }
+        return sortByDepthAscending(copyRows(traj));
+    }
+
+    private static double[][] copyRows(double[][] rows) {
+        double[][] out = new double[rows.length][3];
+        for (int i = 0; i < rows.length; i++) {
+            out[i][0] = rows[i][0];
+            out[i][1] = rows[i][1];
+            out[i][2] = rows[i][2];
+        }
+        return out;
+    }
+
+    private static double[][] sortByDepthAscending(double[][] pts) {
+        if (pts.length <= 1) {
+            return pts;
+        }
+        Integer[] ord = new Integer[pts.length];
+        for (int i = 0; i < ord.length; i++) {
+            ord[i] = i;
+        }
+        Arrays.sort(ord, (a, b) -> Double.compare(pts[a][2], pts[b][2]));
+        double[][] sorted = new double[pts.length][3];
+        for (int i = 0; i < ord.length; i++) {
+            sorted[i][0] = pts[ord[i]][0];
+            sorted[i][1] = pts[ord[i]][1];
+            sorted[i][2] = pts[ord[i]][2];
+        }
+        return sorted;
+    }
+
+    public static double[] interpolateAtDepth(double[][] sortedPts, double depth) {
+        if (sortedPts.length == 0) {
+            return new double[]{0, 0, depth};
+        }
+        if (sortedPts.length == 1) {
+            return new double[]{sortedPts[0][0], sortedPts[0][1], depth};
+        }
+        if (depth <= sortedPts[0][2]) {
+            return linearInterpHorizontalAtDepth(sortedPts[0], sortedPts[1], depth);
+        }
+        if (depth >= sortedPts[sortedPts.length - 1][2]) {
+            int n = sortedPts.length;
+            return linearInterpHorizontalAtDepth(sortedPts[n - 2], sortedPts[n - 1], depth);
+        }
+        for (int i = 0; i < sortedPts.length - 1; i++) {
+            double z0 = sortedPts[i][2];
+            double z1 = sortedPts[i + 1][2];
+            if (depth >= z0 && depth <= z1) {
+                return linearInterpHorizontalAtDepth(sortedPts[i], sortedPts[i + 1], depth);
+            }
+        }
+        return new double[]{sortedPts[sortedPts.length - 1][0], sortedPts[sortedPts.length - 1][1], depth};
+    }
+
+    private static double[] linearInterpHorizontalAtDepth(double[] p0, double[] p1, double depth) {
+        double z0 = p0[2];
+        double z1 = p1[2];
+        if (Math.abs(z1 - z0) < 1e-12) {
+            return new double[]{p0[0], p0[1], depth};
+        }
+        double t = (depth - z0) / (z1 - z0);
+        t = Math.max(0.0, Math.min(1.0, t));
+        double e = p0[0] + t * (p1[0] - p0[0]);
+        double n = p0[1] + t * (p1[1] - p0[1]);
+        return new double[]{e, n, depth};
     }
 
     public void createWellSegments(double depthStep) {
@@ -183,74 +272,57 @@ public class WellObstacleDetector {
         return Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
 
-    public double minHorizontalDistanceScan(double[][] trajectory) {
+    /**
+     * 在重叠垂深区间内按固定步长扫描，对每个垂深在同一 TVD 上插值得到两口井的井眼中心坐标，
+     * 取三维欧氏距离的最小值（与同一深度 CTC 扫描一致；同一垂深下主要为水平分量）。
+     */
+    public double minCenterToCenterScanDistance(double[][] trajectory) {
         if (wellTrajectory == null || trajectory == null) {
             return Double.MAX_VALUE;
         }
-
-        double[] xNew = trajectory[0];
-        double[] yNew = trajectory[1];
-        double[] zNew = trajectory[2];
-
-        double[] zObs = new double[wellTrajectory.length];
-        double[] xObs = new double[wellTrajectory.length];
-        double[] yObs = new double[wellTrajectory.length];
-
-        for (int i = 0; i < wellTrajectory.length; i++) {
-            xObs[i] = wellTrajectory[i][0];
-            yObs[i] = wellTrajectory[i][1];
-            zObs[i] = wellTrajectory[i][2];
+        double[][] subjectRows = normalizeRowPoints(trajectory);
+        double[][] obsRows = wellTrajectory;
+        if (subjectRows.length < 2 || obsRows.length < 2) {
+            return Double.MAX_VALUE;
         }
 
-        Arrays.sort(zObs);
-        Arrays.sort(xObs);
-        Arrays.sort(yObs);
+        double zMinObs = obsRows[0][2];
+        double zMaxObs = obsRows[obsRows.length - 1][2];
+        double zMinSub = subjectRows[0][2];
+        double zMaxSub = subjectRows[subjectRows.length - 1][2];
 
-        double zMinObs = zObs[0];
-        double zMaxObs = zObs[zObs.length - 1];
-
-        double[] zNewSorted = zNew.clone();
-        Arrays.sort(zNewSorted);
-        double zMinNew = zNewSorted[0];
-        double zMaxNew = zNewSorted[zNewSorted.length - 1];
-
-        double zMin = Math.max(zMinObs, zMinNew);
-        double zMax = Math.min(zMaxObs, zMaxNew);
-
+        double zMin = Math.max(zMinObs, zMinSub);
+        double zMax = Math.min(zMaxObs, zMaxSub);
         if (zMax <= zMin) {
             return Double.MAX_VALUE;
         }
 
         double depthStep = 10.0;
-        List<Double> depthList = new ArrayList<>();
-        for (double d = zMin; d <= zMax + 1e-9; d += depthStep) {
-            depthList.add(d);
-        }
-        double[] depths = new double[depthList.size()];
-        for (int i = 0; i < depthList.size(); i++) {
-            depths[i] = depthList.get(i);
-        }
-
-        double[] xObsInterp = interpolate(depths, zObs, xObs);
-        double[] yObsInterp = interpolate(depths, zObs, yObs);
-        double[] xNewInterp = interpolate(depths, zNew, xNew);
-        double[] yNewInterp = interpolate(depths, zNew, yNew);
-
         double minDist = Double.MAX_VALUE;
-        for (int i = 0; i < depths.length; i++) {
-            double dx = xNewInterp[i] - xObsInterp[i];
-            double dy = yNewInterp[i] - yObsInterp[i];
-            double dist = Math.sqrt(dx * dx + dy * dy);
+        for (double d = zMin; d <= zMax + 1e-9; d += depthStep) {
+            double[] pObs = interpolateAtDepth(obsRows, d);
+            double[] pSub = interpolateAtDepth(subjectRows, d);
+            double dx = pSub[0] - pObs[0];
+            double dy = pSub[1] - pObs[1];
+            double dz = pSub[2] - pObs[2];
+            double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
             if (dist < minDist) {
                 minDist = dist;
             }
         }
-
         return minDist;
     }
 
+    /**
+     * @deprecated 使用 {@link #minCenterToCenterScanDistance(double[][])}，旧实现对坐标排序有误。
+     */
+    @Deprecated
+    public double minHorizontalDistanceScan(double[][] trajectory) {
+        return minCenterToCenterScanDistance(trajectory);
+    }
+
     public boolean checkHorizontalCollision(double[][] trajectory, double depthStep) {
-        double dMin = minHorizontalDistanceScan(trajectory);
+        double dMin = minCenterToCenterScanDistance(trajectory);
         if (!Double.isFinite(dMin)) {
             return false;
         }
@@ -258,7 +330,7 @@ public class WellObstacleDetector {
     }
 
     public double getCollisionPenalty(double[][] trajectory) {
-        double dMin = minHorizontalDistanceScan(trajectory);
+        double dMin = minCenterToCenterScanDistance(trajectory);
         if (!Double.isFinite(dMin)) {
             return 0.0;
         }

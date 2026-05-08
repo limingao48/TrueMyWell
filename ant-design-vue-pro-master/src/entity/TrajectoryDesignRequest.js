@@ -32,13 +32,24 @@ export default class TrajectoryDesignRequest {
   }
 
   toRequest () {
+    const a = this.algorithm || {}
     return {
       siteId: this.siteId,
       target: this.target,
       landingRequirement: this.landingRequirement,
       wellhead: this.wellhead,
       neighborWellIds: this.neighborWellIds,
-      algorithm: this.algorithm
+      algorithm: {
+        type: a.type,
+        anticollisionMethod: a.anticollisionMethod,
+        safeRadius: a.safeRadius,
+        minSafetyFactor: a.minSafetyFactor,
+        minKickoffDepth: a.minKickoffDepth,
+        doglegMin: a.doglegMin,
+        doglegMax: a.doglegMax,
+        population: a.population,
+        iterations: a.iterations
+      }
     }
   }
 }
