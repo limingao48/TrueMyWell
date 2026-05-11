@@ -68,6 +68,12 @@ public class TrajectoryDesignRequest {
         private Double doglegMax;
         private Integer population;
         private Integer iterations;
+        /** 可选：ISCWSA-MWD 测深 1σ (m)，缺省用后端默认 */
+        private Double iscwsaSigmaMd;
+        /** 可选：井斜 1σ (°) */
+        private Double iscwsaSigmaIncDeg;
+        /** 可选：方位 1σ (°) */
+        private Double iscwsaSigmaAziDeg;
 
         public String getType() { return type; }
         public void setType(String type) { this.type = type; }
@@ -87,6 +93,12 @@ public class TrajectoryDesignRequest {
         public void setPopulation(Integer population) { this.population = population; }
         public Integer getIterations() { return iterations; }
         public void setIterations(Integer iterations) { this.iterations = iterations; }
+        public Double getIscwsaSigmaMd() { return iscwsaSigmaMd; }
+        public void setIscwsaSigmaMd(Double iscwsaSigmaMd) { this.iscwsaSigmaMd = iscwsaSigmaMd; }
+        public Double getIscwsaSigmaIncDeg() { return iscwsaSigmaIncDeg; }
+        public void setIscwsaSigmaIncDeg(Double iscwsaSigmaIncDeg) { this.iscwsaSigmaIncDeg = iscwsaSigmaIncDeg; }
+        public Double getIscwsaSigmaAziDeg() { return iscwsaSigmaAziDeg; }
+        public void setIscwsaSigmaAziDeg(Double iscwsaSigmaAziDeg) { this.iscwsaSigmaAziDeg = iscwsaSigmaAziDeg; }
     }
 
     public Long getSiteId() { return siteId; }

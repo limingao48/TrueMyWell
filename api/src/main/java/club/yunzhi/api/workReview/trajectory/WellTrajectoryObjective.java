@@ -1,5 +1,8 @@
 package club.yunzhi.api.workReview.trajectory;
 
+import club.yunzhi.api.workReview.trajectory.iscwsa.IscwsaMwdParameters;
+import club.yunzhi.api.workReview.trajectory.iscwsa.IscwsaMwdSeparationFactor;
+
 import java.util.*;
 
 public class WellTrajectoryObjective {
@@ -34,7 +37,7 @@ public class WellTrajectoryObjective {
             return calculateSevenSegmentObjective(positionTuple);
         }
 
-        if (positionTuple[0] > positionTuple[7]) {
+        if (!config.validateParameters(positionTuple)) {
             return 1e20;
         }
 
@@ -55,15 +58,7 @@ public class WellTrajectoryObjective {
             return penalty;
         }
 
-        for (WellObstacleDetector wellObstacle : wellObstacles) {
-            if (wellObstacle != null) {
-                double wellCollisionPenalty = wellObstacle.getCollisionPenalty(result.points);
-                penalty += wellCollisionPenalty;
-                if (wellCollisionPenalty >= 1e20) {
-                    return penalty;
-                }
-            }
-        }
+        penalty += calculateCollisionPenalty(result.points);
 
         double[] finalPoint = new double[]{
             result.points[0][result.points[0].length - 1],
@@ -151,19 +146,42 @@ public class WellTrajectoryObjective {
         return v >= mn || v <= mx;
     }
 
+    private boolean isSeparationFactorMode() {
+        if (config.anticollisionMethod == null) {
+            return false;
+        }
+        return "SF".equalsIgnoreCase(config.anticollisionMethod.trim());
+    }
+
+    /**
+     * CTC：井眼中心最小三维距离 &lt; {@code safetyRadius} 则罚分。
+     * SF（ISCWSA-MWD 简化）：扫描最小分离系数 f_S = R_S/(R_1+R_2)，若 min(f_S) &lt; {@code minSafetyFactor} 则罚分。
+     */
     private double calculateCollisionPenalty(double[][] trajectory) {
         double totalPenalty = 0.0;
+        IscwsaMwdParameters mwd = IscwsaMwdParameters.fromConfig(config);
+        double fReq = config.minSafetyFactor > 1e-9 ? config.minSafetyFactor : 1.2;
+        double ctcReq = config.safetyRadius > 1e-9 ? config.safetyRadius : 10.0;
+
         for (WellObstacleDetector wellObstacle : wellObstacles) {
-            if (wellObstacle == null) {
+            if (wellObstacle == null || wellObstacle.getWellTrajectory() == null) {
                 continue;
             }
-            double dMin = wellObstacle.minHorizontalDistanceScan(trajectory);
-            if (!Double.isFinite(dMin)) {
-                continue;
-            }
-            double safe = wellObstacle.getSafetyRadius();
-            if (dMin < safe) {
-                totalPenalty += 1e24 + 1e8 * Math.pow(safe - dMin + 1.0, 2);
+            if (isSeparationFactorMode()) {
+                double minFs = IscwsaMwdSeparationFactor.minimumSeparationFactorScan(
+                        trajectory,
+                        wellObstacle.getWellTrajectory(),
+                        mwd,
+                        mwd,
+                        10.0);
+                if (Double.isFinite(minFs) && minFs < fReq) {
+                    totalPenalty += 1e24 + 1e8 * Math.pow(fReq - minFs + 1e-6, 2);
+                }
+            } else {
+                double dMin = wellObstacle.minCenterToCenterScanDistance(trajectory);
+                if (Double.isFinite(dMin) && dMin < ctcReq) {
+                    totalPenalty += 1e24 + 1e8 * Math.pow(ctcReq - dMin + 1.0, 2);
+                }
             }
         }
         return totalPenalty;
@@ -200,9 +218,27 @@ public class WellTrajectoryObjective {
         );
 
         boolean wellCollision = false;
+        IscwsaMwdParameters mwd = IscwsaMwdParameters.fromConfig(config);
+        double fReq = config.minSafetyFactor > 1e-9 ? config.minSafetyFactor : 1.2;
+        double ctcReq = config.safetyRadius > 1e-9 ? config.safetyRadius : 10.0;
         for (WellObstacleDetector wellObstacle : wellObstacles) {
-            if (wellObstacle != null) {
-                if (wellObstacle.checkHorizontalCollision(result.points, 10.0)) {
+            if (wellObstacle == null || wellObstacle.getWellTrajectory() == null) {
+                continue;
+            }
+            if (isSeparationFactorMode()) {
+                double minFs = IscwsaMwdSeparationFactor.minimumSeparationFactorScan(
+                        result.points,
+                        wellObstacle.getWellTrajectory(),
+                        mwd,
+                        mwd,
+                        10.0);
+                if (Double.isFinite(minFs) && minFs < fReq) {
+                    wellCollision = true;
+                    break;
+                }
+            } else {
+                double dMin = wellObstacle.minCenterToCenterScanDistance(result.points);
+                if (Double.isFinite(dMin) && dMin < ctcReq) {
                     wellCollision = true;
                     break;
                 }

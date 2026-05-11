@@ -22,6 +22,17 @@ public class WellTrajectoryConfig {
     public double[] obstacleZRange = {1600, 3000};
 
     public double safetyRadius = 10.0;
+    /** SF 分离系数法：最小允许分离系数（与 {@link #safetyRadius} 相乘得到最小允许中心距） */
+    public double minSafetyFactor = 1.2;
+    /** 防碰分析：{@code CTC} 井眼中心距法；{@code SF} 分离系数法（ISCWSA-MWD 简化椭球 + f_S=R_S/(R_1+R_2)） */
+    public String anticollisionMethod = "CTC";
+
+    /** ISCWSA-MWD 简化：测深 1σ (m) */
+    public double iscwsaSigmaMdMeters = 0.6;
+    /** 井斜 1σ (°) */
+    public double iscwsaSigmaIncDegrees = 0.2;
+    /** 网格方位 1σ (°) */
+    public double iscwsaSigmaAziDegrees = 0.3;
     public double targetDeviationThreshold = 30.0;
     public double targetDeviationPenalty = 100000.0;
     public double verticalTolerance = 5.0;
@@ -33,7 +44,7 @@ public class WellTrajectoryConfig {
 
     public double[] sevenL0Range = {500.0, 2500.0};
     public double[] sevenDLS1Range = {1.0, 6.0};
-    public double[] sevenAlpha3Range = {5.0, 85.0};
+    public double[] sevenAlpha3Range = {0.1, 90.0};
     public double[] sevenL3Range = {0.0, 2500.0};
     public double[] sevenDLSTurnRange = {1.0, 6.0};
     public double[] sevenL4Range = {0.0, 2000.0};
@@ -66,13 +77,28 @@ public class WellTrajectoryConfig {
     public double R_1_max = 1145;
     public double R_2_min = 286;
     public double R_2_max = 1145;
+    /** 扭方位点垂深下界，与 {@link #D_kop_min} 一致；由 {@link #refreshLegacyEightParamBounds()} 同步 */
     public double D_turn_kop_min = 1500;
+    /** 扭方位点垂深上界，等于靶点垂深 {@link #D_target}；由 {@link #refreshLegacyEightParamBounds()} 同步 */
     public double D_turn_kop_max = 2400;
 
     public double[][] BOUNDS;
 
     public WellTrajectoryConfig() {
         refreshSevenSegmentBounds();
+        refreshLegacyEightParamBounds();
+    }
+
+    /**
+     * 按靶点垂深更新八参数模型中扭方位深度 {@code D_turn_kop} 的取值区间：
+     * {@code [D_kop_min, D_target]}，且校验时要求 {@code D_turn_kop > D_kop}。
+     */
+    public void refreshLegacyEightParamBounds() {
+        D_turn_kop_min = D_kop_min;
+        D_turn_kop_max = D_target;
+        if (D_turn_kop_max < D_turn_kop_min) {
+            D_turn_kop_max = D_turn_kop_min + 1e-6;
+        }
         BOUNDS = new double[][] {
             {D_kop_min, D_kop_max},
             {alpha_1_min, alpha_1_max},
@@ -117,7 +143,7 @@ public class WellTrajectoryConfig {
             }
         }
 
-        if (positionTuple[0] > positionTuple[7]) {
+        if (positionTuple[7] <= positionTuple[0]) {
             return false;
         }
 
