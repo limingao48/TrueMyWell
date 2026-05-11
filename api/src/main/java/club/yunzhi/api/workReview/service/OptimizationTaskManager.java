@@ -3,23 +3,18 @@ package club.yunzhi.api.workReview.service;
 import club.yunzhi.api.workReview.entity.OptimizationProgress;
 import club.yunzhi.api.workReview.entity.TrajectoryDesignRequest;
 import club.yunzhi.api.workReview.entity.TrajectoryDesignResult;
-import club.yunzhi.api.workReview.entity.Well;
-import club.yunzhi.api.workReview.repository.TrajectoryFileRepository;
-import club.yunzhi.api.workReview.repository.WellRepository;
+import club.yunzhi.api.workReview.trajectory.TrajectoryAnticollisionConfig;
 import club.yunzhi.api.workReview.trajectory.WellTrajectoryConfig;
 import club.yunzhi.api.workReview.trajectory.WellTrajectoryObjective;
 import club.yunzhi.api.workReview.trajectory.optimizer.ObjectiveFunction;
 import club.yunzhi.api.workReview.trajectory.optimizer.OptimizerFactory;
 import club.yunzhi.api.workReview.trajectory.optimizer.ProgressAwareOptimizer;
 import club.yunzhi.api.workReview.trajectory.optimizer.TrajectoryOptimizer;
-import club.yunzhi.api.workReview.util.ExcelParser;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -31,12 +26,10 @@ public class OptimizationTaskManager {
     private final Map<String, OptimizationProgress> progressMap = new ConcurrentHashMap<>();
     private final ExecutorService executorService = Executors.newFixedThreadPool(4);
 
-    private final WellRepository wellRepository;
-    private final TrajectoryFileRepository trajectoryFileRepository;
+    private final NeighborWellTrajectoryService neighborWellTrajectoryService;
 
-    public OptimizationTaskManager(WellRepository wellRepository, TrajectoryFileRepository trajectoryFileRepository) {
-        this.wellRepository = wellRepository;
-        this.trajectoryFileRepository = trajectoryFileRepository;
+    public OptimizationTaskManager(NeighborWellTrajectoryService neighborWellTrajectoryService) {
+        this.neighborWellTrajectoryService = neighborWellTrajectoryService;
     }
 
     public SseEmitter createProgressEmitter(String taskId) {
@@ -155,6 +148,7 @@ public class OptimizationTaskManager {
                 config.sevenDLSTurnRange[1] = maxDogleg;
                 config.sevenDLS6Range[1] = maxDogleg;
             }
+            TrajectoryAnticollisionConfig.applyFromAlgorithm(algorithm, config);
         }
 
         if (config.landingInclinationMin > config.landingInclinationMax) {
@@ -176,13 +170,18 @@ public class OptimizationTaskManager {
         config.sevenL0Range[1] = Math.max(config.sevenL0Range[1], config.sevenL0Range[0] + 1.0);
         config.refreshSevenSegmentBounds();
 
+        config.D_kop_min = config.sevenL0Range[0];
+        config.refreshLegacyEightParamBounds();
+
         WellTrajectoryObjective objective = new WellTrajectoryObjective(config);
+        neighborWellTrajectoryService.attachObstaclesForOptimization(request, objective, config.safetyRadius);
 
         double[][] bounds = config.getSevenSegmentBounds();
         ObjectiveFunction objectiveFunc = params -> objective.calculateSevenSegmentObjective(params);
 
         TrajectoryOptimizer optimizer = OptimizerFactory.getOptimizer(algorithmType);
 
+        long optimizeStartNs = System.nanoTime();
         double[] bestPosition;
         if (optimizer instanceof ProgressAwareOptimizer) {
             bestPosition = ((ProgressAwareOptimizer) optimizer).optimize(objectiveFunc, config, bounds,
@@ -197,6 +196,7 @@ public class OptimizationTaskManager {
         } else {
             bestPosition = optimizer.optimize(objectiveFunc, config, bounds, population, iterations);
         }
+        double optimizationSeconds = (System.nanoTime() - optimizeStartNs) / 1_000_000_000.0;
 
         // 构建结果
         java.util.Map<String, Double> bestSolution = new java.util.LinkedHashMap<>();
@@ -209,7 +209,7 @@ public class OptimizationTaskManager {
 
         java.util.Map<String, Object> trajectoryInfo = objective.getTrajectoryInfo(bestPosition);
         result.setFinal_deviation((Double) trajectoryInfo.getOrDefault("targetDeviation", 999.0));
-        result.setOptimization_time(0.5);
+        result.setOptimization_time(optimizationSeconds);
 
         double[][] trajectory = (double[][]) trajectoryInfo.get("trajectory");
         if (trajectory != null) {
@@ -220,59 +220,9 @@ public class OptimizationTaskManager {
             result.setTrajectory_points(points);
         }
 
-        // 生成邻井轨迹数据
-        generateNeighborWellTrajectories(request, result);
+        result.setNeighbor_wells(neighborWellTrajectoryService.loadNeighborTrajectories(request));
 
         return result;
-    }
-
-    private void generateNeighborWellTrajectories(TrajectoryDesignRequest request, TrajectoryDesignResult result) {
-        java.util.List<TrajectoryDesignResult.WellTrajectory> neighborWells = new java.util.ArrayList<>();
-
-        if (request.getNeighborWellIds() != null && !request.getNeighborWellIds().isEmpty()) {
-            for (Long wellId : request.getNeighborWellIds()) {
-                try {
-                    Optional<Well> wellOpt = wellRepository.findById(wellId);
-
-                    if (wellOpt.isPresent()) {
-                        Well well = wellOpt.get();
-                        String wellNo = well.getWellNo();
-                        
-                        // 从数据库查询该井的轨迹文件
-                        Optional<club.yunzhi.api.workReview.entity.TrajectoryFile> fileOpt = 
-                            trajectoryFileRepository.findFirstByWellNoOrderByIdDesc(wellNo);
-
-                        if (fileOpt.isPresent()) {
-                            club.yunzhi.api.workReview.entity.TrajectoryFile trajectoryFile = fileOpt.get();
-                            byte[] fileContent = trajectoryFile.getFileContent();
-                            
-                            // 解析Excel文件获取轨迹点
-                            java.util.List<TrajectoryDesignResult.TrajectoryPoint> points = 
-                                ExcelParser.parseTrajectoryFromExcel(
-                                        fileContent,
-                                        trajectoryFile.getFileName(),
-                                        well.getWellheadE(),
-                                        well.getWellheadN(),
-                                        well.getWellheadD()
-                                );
-
-                            if (!points.isEmpty()) {
-                                TrajectoryDesignResult.WellTrajectory wellTrajectory = new TrajectoryDesignResult.WellTrajectory();
-                                wellTrajectory.setWellId(wellId.toString());
-                                wellTrajectory.setWellNo(wellNo);
-                                wellTrajectory.setWellName(well.getName() != null ? well.getName() : wellNo);
-                                wellTrajectory.setTrajectory_points(points);
-                                neighborWells.add(wellTrajectory);
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    // 忽略无效数据或轨迹解析异常
-                }
-            }
-        }
-
-        result.setNeighbor_wells(neighborWells);
     }
 
     private void sendProgress(String taskId, OptimizationProgress progress) {
