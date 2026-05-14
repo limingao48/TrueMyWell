@@ -42,12 +42,9 @@
           <a-button type="link" style="padding-left: 0" @click="exitSite">
             <a-icon type="arrow-left" /> 返回井场列表
           </a-button>
-          <a-button type="primary" icon="line-chart" :loading="vizLoading" @click="toggleVisualization">
-            {{ showVisualization ? '收起可视化' : '井轨迹 3D 可视化' }}
-          </a-button>
         </div>
         <div class="section-title">{{ currentSiteName }} — 井管理</div>
-        <a-tabs default-active-key="wells">
+        <a-tabs v-model="siteManageActiveTab" @change="onSiteManageTabChange">
           <a-tab-pane key="wells" tab="井列表">
             <a-form layout="inline" style="margin-bottom: 16px">
               <a-form-item label="井号">
@@ -58,6 +55,15 @@
                 <a-button style="margin-left: 8px" @click="wellQuery = {}">重置</a-button>
                 <a-button type="primary" icon="plus" style="margin-left: 8px" @click="openAddWellDrawer()">新增井</a-button>
                 <a-button style="margin-left: 8px" icon="upload" @click="openBatchImportModal()">批量导入井</a-button>
+                <a-button
+                  type="primary"
+                  icon="line-chart"
+                  style="margin-left: 8px"
+                  :loading="vizLoading"
+                  @click="toggleVisualization"
+                >
+                  {{ showVisualization ? '收起可视化' : '井轨迹 3D 可视化' }}
+                </a-button>
               </a-form-item>
             </a-form>
             <a-table
@@ -103,10 +109,45 @@
               </span>
             </a-table>
           </a-tab-pane>
+
+          <a-tab-pane key="pendingDrill" tab="待钻井列表">
+            <a-alert
+              type="info"
+              show-icon
+              style="margin-bottom: 12px"
+              message="列出从「轨迹设计」保存且归属当前井场的待钻井；可下载「井斜数据表」（xlsx，工作表名为井斜数据表）。"
+            />
+            <a-table
+              :columns="pendingDrillColumns"
+              :data-source="pendingDrillList"
+              :pagination="{ pageSize: 10, showSizeChanger: true }"
+              row-key="id"
+              :loading="pendingDrillLoading"
+              :scroll="{ x: 1280 }"
+            >
+              <span slot="pendingExcel" slot-scope="text, record">
+                <a-tag v-if="record.hasTrajectoryExcel" color="green">已关联</a-tag>
+                <a-tag v-else color="default">无文件</a-tag>
+              </span>
+              <span slot="pendingAction" slot-scope="text, record">
+                <a-button
+                  type="link"
+                  size="small"
+                  :disabled="!record.hasTrajectoryExcel"
+                  style="padding: 0"
+                  @click="downloadPendingDrillExcel(record)"
+                >下载井斜数据表</a-button>
+                <a-divider type="vertical" />
+                <a-popconfirm title="确定删除该待钻井？" @confirm="deletePendingDrill(record)">
+                  <a class="danger">删除</a>
+                </a-popconfirm>
+              </span>
+            </a-table>
+          </a-tab-pane>
         </a-tabs>
 
         <!-- 井轨迹 3D 可视化（当前页下方） -->
-        <div v-if="showVisualization" class="viz-section">
+        <div v-if="showVisualization && siteManageActiveTab === 'wells'" class="viz-section">
           <a-divider orientation="left">井轨迹 3D 可视化（可拖动旋转视角）</a-divider>
           <div v-if="vizError" class="viz-error">{{ vizError }}</div>
           <div v-else ref="chart3dContainer" class="chart3d-container" />
@@ -320,6 +361,30 @@ function findColumnIndex (headers, aliases) {
   return -1
 }
 
+function formatCoordCell (v) {
+  if (v == null || v === '') return '-'
+  const n = Number(v)
+  return Number.isFinite(n) ? n.toFixed(2) : '-'
+}
+
+function formatPendingTimeCell (v) {
+  if (v == null || v === '') return '-'
+  if (typeof v === 'string') {
+    return v.length > 19 ? v.slice(0, 19).replace('T', ' ') : v
+  }
+  if (typeof v === 'number' && Number.isFinite(v)) {
+    const d = new Date(v)
+    return isNaN(d.getTime()) ? String(v) : d.toLocaleString()
+  }
+  if (Array.isArray(v) && v.length >= 3) {
+    const y = v[0]
+    const mo = String(v[1]).padStart(2, '0')
+    const da = String(v[2]).padStart(2, '0')
+    return `${y}-${mo}-${da}`
+  }
+  return String(v)
+}
+
 export default {
   name: 'BasicData',
   data () {
@@ -353,6 +418,22 @@ export default {
         { title: '关联井号', dataIndex: 'wellNo', key: 'wellNo', scopedSlots: { customRender: 'wellNo' } },
         { title: '上传时间', dataIndex: 'uploadTime', key: 'uploadTime' },
         { title: '操作', key: 'action', scopedSlots: { customRender: 'action' }, width: 220 }
+      ],
+      pendingDrillList: [],
+      pendingDrillLoading: false,
+      pendingDrillColumns: [
+        { title: '名称', dataIndex: 'name', key: 'name', ellipsis: true, width: 140 },
+        { title: '井口 E', dataIndex: 'wellheadE', key: 'wellheadE', width: 80, customRender: (t) => formatCoordCell(t) },
+        { title: '井口 N', dataIndex: 'wellheadN', key: 'wellheadN', width: 80, customRender: (t) => formatCoordCell(t) },
+        { title: '井口 D', dataIndex: 'wellheadD', key: 'wellheadD', width: 80, customRender: (t) => formatCoordCell(t) },
+        { title: '靶 E', dataIndex: 'targetE', key: 'targetE', width: 80, customRender: (t) => formatCoordCell(t) },
+        { title: '靶 N', dataIndex: 'targetN', key: 'targetN', width: 80, customRender: (t) => formatCoordCell(t) },
+        { title: '靶 D', dataIndex: 'targetD', key: 'targetD', width: 80, customRender: (t) => formatCoordCell(t) },
+        { title: '入靶偏差(m)', dataIndex: 'finalDeviation', key: 'finalDeviation', width: 100, customRender: (t) => formatCoordCell(t) },
+        { title: '优化耗时(s)', dataIndex: 'optimizationTime', key: 'optimizationTime', width: 100, customRender: (t) => formatCoordCell(t) },
+        { title: '井斜数据表', key: 'excel', scopedSlots: { customRender: 'pendingExcel' }, width: 110 },
+        { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 170, customRender: (t) => formatPendingTimeCell(t) },
+        { title: '操作', key: 'paction', scopedSlots: { customRender: 'pendingAction' }, width: 200, fixed: 'right' }
       ],
       wellModalVisible: false,
       wellForm: {
@@ -393,6 +474,7 @@ export default {
       ],
 
       showVisualization: false,
+      siteManageActiveTab: 'wells',
       chart3d: null,
       vizLoading: false,
       vizError: '',
@@ -405,10 +487,14 @@ export default {
   },
   watch: {
     currentSiteId (newSiteId) {
+      this.collapseVisualization()
+      this.siteManageActiveTab = 'wells'
       if (newSiteId) {
         this.loadWellList(newSiteId)
+        this.loadPendingDrillList(newSiteId)
       } else {
         this.wellList = []
+        this.pendingDrillList = []
       }
     }
   },
@@ -538,6 +624,24 @@ export default {
         })
         .finally(() => {
           this.loading = false
+        })
+    },
+    loadPendingDrillList (siteId) {
+      if (!siteId) {
+        this.pendingDrillList = []
+        return
+      }
+      this.pendingDrillLoading = true
+      drillingAPI.getPendingDrillWellsBySite(siteId)
+        .then(res => {
+          this.pendingDrillList = this.normalizeListResponse(res)
+        })
+        .catch(err => {
+          this.$message.error('获取待钻井列表失败：' + (err.message || '未知错误'))
+          this.pendingDrillList = []
+        })
+        .finally(() => {
+          this.pendingDrillLoading = false
         })
     },
     loadTrajectoryFileList () {
@@ -878,13 +982,62 @@ export default {
       })
     },
 
+    downloadPendingDrillExcel (record) {
+      if (!record || !record.id || !record.hasTrajectoryExcel) return
+      this.pendingDrillLoading = true
+      drillingAPI.downloadPendingDrillWellTrajectoryExcel(record.id)
+        .then((buffer) => {
+          const name = (record.trajectoryFileName && String(record.trajectoryFileName).trim())
+            ? record.trajectoryFileName
+            : `井斜数据表_${record.id}.xlsx`
+          const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+          const link = document.createElement('a')
+          link.href = window.URL.createObjectURL(blob)
+          link.download = name
+          link.click()
+          window.URL.revokeObjectURL(link.href)
+          this.$message.success('已开始下载')
+        })
+        .catch(err => {
+          this.$message.error('下载失败：' + (err.message || '未知错误'))
+        })
+        .finally(() => {
+          this.pendingDrillLoading = false
+        })
+    },
+    deletePendingDrill (record) {
+      if (!record || !record.id) return
+      this.pendingDrillLoading = true
+      drillingAPI.deletePendingDrillWell(record.id)
+        .then(() => {
+          this.$message.success('已删除')
+          this.loadPendingDrillList(this.currentSiteId)
+        })
+        .catch(err => {
+          this.$message.error('删除失败：' + (err.message || '未知错误'))
+        })
+        .finally(() => {
+          this.pendingDrillLoading = false
+        })
+    },
+
+    onSiteManageTabChange (key) {
+      if (key !== 'wells') {
+        this.collapseVisualization()
+      }
+    },
+    collapseVisualization () {
+      this.showVisualization = false
+      this.vizLoading = false
+      this.vizError = ''
+      if (this.chart3d) {
+        this.chart3d.dispose()
+        this.chart3d = null
+      }
+    },
     toggleVisualization () {
       if (this.showVisualization) {
-        this.showVisualization = false
-        if (this.chart3d) {
-          this.chart3d.dispose()
-          this.chart3d = null
-        }
+        this.collapseVisualization()
         return
       }
       this.showVisualization = true
