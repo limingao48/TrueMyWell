@@ -39,6 +39,8 @@ const API = {
   },
   // 钻井相关
   drilling: {
+    // 防碰扫描
+    anticollisionScan: '/anticollision/scan',
     // 井场相关
     getSiteList: '/site/getAll',
     createSite: '/site/add',
@@ -700,6 +702,25 @@ export const drillingAPI = {
       method: 'get',
       params: { id },
       responseType: 'arraybuffer'
+    })
+  },
+
+  /**
+   * 防碰扫描
+   * @param {Object} data - 扫描参数
+   * @param {number} data.siteId - 井场ID
+   * @param {number} data.trajectoryId - 待扫描轨迹ID（井ID）
+   * @param {Array<number>} data.neighborWellIds - 邻井ID列表
+   * @param {string} data.anticollisionMethod - 防碰分析方法（CTC/SF）
+   * @param {number} data.safeRadius - 安全半径（CTC方法使用）
+   * @param {number} data.minSafetyFactor - 最小安全系数（SF方法使用）
+   * @returns {Promise<Object>} 扫描结果
+   */
+  anticollisionScan (data) {
+    return request({
+      url: API.drilling.anticollisionScan,
+      method: 'post',
+      data
     })
   }
 }
