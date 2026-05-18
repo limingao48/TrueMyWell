@@ -333,7 +333,6 @@
         <!-- 步骤4：结果与导出 -->
         <div v-if="currentStep === 4" class="step-form">
           <a-alert v-if="designResult" message="设计完成" type="success" show-icon style="margin-bottom: 16px" />
-
           <a-descriptions
             v-if="designResult"
             title="七段式设计参数（12 参数）"
@@ -368,7 +367,7 @@
           </div>
 
           <div v-if="designResult" class="result-actions">
-            <a-button type="primary" icon="save" @click="saveAsDesign">保存为设计井</a-button>
+            <a-button type="primary" icon="save" @click="openPendingSaveModal">保存为待钻井</a-button>
             <a-button icon="file-pdf" :loading="reportExporting" @click="exportReport">导出报告</a-button>
             <a-button @click="$router.push('/drilling/anticollision')">发起防碰扫描</a-button>
           </div>
@@ -412,6 +411,25 @@
         />
         <div class="progress-percent">{{ Math.round(progressInfo.progressPercent || 0) }}%</div>
       </div>
+    </a-modal>
+
+    <a-modal
+      title="保存为待钻井"
+      :visible="showPendingSaveModal"
+      :confirm-loading="pendingSaveSubmitting"
+      ok-text="保存"
+      cancel-text="取消"
+      @ok="confirmSavePending"
+      @cancel="closePendingSaveModal"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="待钻井名称" required>
+          <a-input v-model="pendingSaveName" placeholder="请输入名称" allow-clear />
+        </a-form-item>
+        <p style="margin: 0; color: rgba(0,0,0,.45); font-size: 12px; line-height: 1.6">
+          待钻井必须归属当前设计所选井场（与第一步「选择井场」一致）。保存后服务端将根据设计井坐标生成标准「井斜数据表」（工作表名与文件名均含此称谓），包含测深、井斜角、网格方位并入库。
+        </p>
+      </a-form>
     </a-modal>
 
     <div v-if="designResult" ref="reportRoot" class="report-export-root">
@@ -1119,6 +1137,9 @@ export default {
       pollingTimeout: null,
       activePollingKey: null,
       currentTaskId: null,
+      showPendingSaveModal: false,
+      pendingSaveName: '',
+      pendingSaveSubmitting: false,
       reportGeneratedAt: '',
       reportAssets: {
         trajectory3d: '',
@@ -1848,8 +1869,71 @@ export default {
         message: ''
       }
     },
-    saveAsDesign () {
-      this.$message.success('已保存为设计井（模拟）')
+    openPendingSaveModal () {
+      if (!this.designResult || !this.designResult.best_solution_dict) {
+        this.$message.warning('请先完成轨迹设计')
+        return
+      }
+      const t = new Date()
+      const pad = (n) => (n < 10 ? '0' + n : '' + n)
+      const stamp = `${t.getFullYear()}${pad(t.getMonth() + 1)}${pad(t.getDate())}_${pad(t.getHours())}${pad(t.getMinutes())}`
+      this.pendingSaveName = `待钻井-${stamp}`
+      this.showPendingSaveModal = true
+    },
+    closePendingSaveModal () {
+      this.showPendingSaveModal = false
+      this.pendingSaveSubmitting = false
+    },
+    async confirmSavePending () {
+      if (!this.pendingSaveName || !String(this.pendingSaveName).trim()) {
+        this.$message.warning('请填写待钻井名称')
+        return
+      }
+      if (!this.designResult || !this.designResult.best_solution_dict) {
+        this.$message.warning('无设计结果可保存')
+        return
+      }
+      if (this.form.siteId == null || this.form.siteId === '') {
+        this.$message.warning('待钻井须归属井场，请返回第一步选择井场后再保存')
+        return
+      }
+      const seven = {}
+      for (const k of Object.keys(this.designResult.best_solution_dict)) {
+        const v = this.designResult.best_solution_dict[k]
+        const n = Number(v)
+        seven[k] = Number.isFinite(n) ? n : v
+      }
+      const rawPts = this.designResult.trajectory_points || []
+      const trajectoryPoints = rawPts
+        .map((p) => ({
+          x: p && p.x != null ? Number(p.x) : NaN,
+          y: p && p.y != null ? Number(p.y) : NaN,
+          z: p && p.z != null ? Number(p.z) : NaN
+        }))
+        .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z))
+      const dto = {
+        siteId: this.form.siteId != null && this.form.siteId !== '' ? Number(this.form.siteId) : null,
+        name: String(this.pendingSaveName).trim(),
+        wellheadE: this.form.wellhead && this.form.wellhead.e != null ? Number(this.form.wellhead.e) : null,
+        wellheadN: this.form.wellhead && this.form.wellhead.n != null ? Number(this.form.wellhead.n) : null,
+        wellheadD: this.form.wellhead && this.form.wellhead.d != null ? Number(this.form.wellhead.d) : null,
+        targetE: this.form.target && this.form.target.e != null ? Number(this.form.target.e) : null,
+        targetN: this.form.target && this.form.target.n != null ? Number(this.form.target.n) : null,
+        targetD: this.form.target && this.form.target.d != null ? Number(this.form.target.d) : null,
+        sevenSegmentParams: seven,
+        trajectoryPoints,
+        finalDeviation: this.designResult.final_deviation != null ? Number(this.designResult.final_deviation) : null,
+        optimizationTime: this.designResult.optimization_time != null ? Number(this.designResult.optimization_time) : null
+      }
+      this.pendingSaveSubmitting = true
+      try {
+        await drillingAPI.savePendingDrillWell(dto)
+        this.$message.success('已保存为待钻井（井斜数据表已自动生成并入库）')
+        this.closePendingSaveModal()
+      } catch (err) {
+        this.$message.error('保存失败：' + (err.message || '未知错误'))
+        this.pendingSaveSubmitting = false
+      }
     },
     async exportReport () {
       if (!this.designResult) {

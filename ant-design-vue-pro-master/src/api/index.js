@@ -67,7 +67,15 @@ const API = {
     designTrajectory: '/trajectory/design',
     startDesign: '/trajectory/design/start',
     getDesignProgress: '/trajectory/design/progress/',
-    getDesignStatus: '/trajectory/design/status/'
+    getDesignStatus: '/trajectory/design/status/',
+
+    savePendingDrillWell: '/pendingDrillWell/save',
+    getPendingDrillWells: '/pendingDrillWell/getAll',
+    getPendingDrillWellsBySite: '/pendingDrillWell/getBySiteId',
+    getPendingDrillWellById: '/pendingDrillWell/getById',
+    deletePendingDrillWell: '/pendingDrillWell/delete',
+    uploadPendingDrillWellTrajectoryExcel: '/pendingDrillWell/uploadTrajectoryExcel',
+    downloadPendingDrillWellTrajectoryExcel: '/pendingDrillWell/downloadTrajectoryExcel'
   }
 }
 
@@ -645,6 +653,53 @@ export const drillingAPI = {
     return request({
       url: `${API.drilling.getDesignStatus}${taskId}`,
       method: 'get'
+    })
+  },
+
+  savePendingDrillWell (data) {
+    return request({
+      url: API.drilling.savePendingDrillWell,
+      method: 'post',
+      data
+    })
+  },
+
+  getPendingDrillWells () {
+    return request({ url: API.drilling.getPendingDrillWells, method: 'get' })
+  },
+
+  getPendingDrillWellsBySite (siteId) {
+    return request({ url: API.drilling.getPendingDrillWellsBySite, method: 'get', params: { siteId } })
+  },
+
+  getPendingDrillWellById (id) {
+    return request({ url: API.drilling.getPendingDrillWellById, method: 'get', params: { id } })
+  },
+
+  deletePendingDrillWell (id) {
+    return request({ url: API.drilling.deletePendingDrillWell, method: 'delete', params: { id } })
+  },
+
+  uploadPendingDrillWellTrajectoryExcel (id, file) {
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('id', id)
+    return request({
+      url: API.drilling.uploadPendingDrillWellTrajectoryExcel,
+      method: 'post',
+      data: fd
+    })
+  },
+
+  /**
+   * 下载待钻井关联的轨迹 Excel（ArrayBuffer）
+   */
+  downloadPendingDrillWellTrajectoryExcel (id) {
+    return request({
+      url: API.drilling.downloadPendingDrillWellTrajectoryExcel,
+      method: 'get',
+      params: { id },
+      responseType: 'arraybuffer'
     })
   }
 }
