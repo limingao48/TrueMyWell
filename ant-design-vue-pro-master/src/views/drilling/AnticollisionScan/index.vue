@@ -1,97 +1,181 @@
 <template>
   <page-header-wrapper>
     <template v-slot:content>
-      对一条轨迹与多口邻井做防碰扫描，得到最小距离与风险提示。
+      对井轨迹进行多维度评估，包括防碰扫描等评估项。
     </template>
-    <a-card :bordered="false" class="scan-form">
-      <div class="algo-row">
-        <label class="algo-label">待扫描轨迹：</label>
-        <div class="algo-input">
-          <a-select v-model="form.trajectoryId" placeholder="从已有设计选择或上传轨迹" class="algo-input-inner algo-input-full">
-            <a-select-option value="design_1">最近设计：41-37YH3 靶点 (502.64, 2790.71, 2636.06)</a-select-option>
-            <a-select-option value="design_2">设计：41-38YH1 靶点 (510, 2800, 2650)</a-select-option>
-            <a-select-option value="upload">上传轨迹文件...</a-select-option>
-          </a-select>
-        </div>
-      </div>
-      <div class="algo-row">
-        <label class="algo-label">邻井（多选）：</label>
-        <div class="algo-input">
-          <a-select
-            v-model="form.neighborWellIds"
-            mode="multiple"
-            placeholder="从基础数据中选择邻井"
-            class="algo-input-inner algo-input-full"
-          >
-            <a-select-option v-for="w in neighborWells" :key="w.id" :value="w.id">{{ w.name }} ({{ w.wellNo }})</a-select-option>
-          </a-select>
-        </div>
-      </div>
-      <div class="algo-row">
-        <label class="algo-label">防碰分析方法：</label>
-        <div class="algo-input">
-          <a-select v-model="form.anticollisionMethod" placeholder="请选择" class="algo-input-inner">
-            <a-select-option value="CTC">CTC 井眼中心距法</a-select-option>
-            <a-select-option value="SF">SF 分离系数法</a-select-option>
-          </a-select>
-        </div>
-      </div>
-      <div v-if="form.anticollisionMethod === 'CTC'" class="algo-row">
-        <label class="algo-label">最小安全半径(m)：</label>
-        <div class="algo-input">
-          <a-input-number v-model="form.safeRadius" :min="1" :max="50" class="algo-input-inner" placeholder="如 10" />
-        </div>
-      </div>
-      <div v-else class="algo-row">
-        <label class="algo-label">最小 SF：</label>
-        <div class="algo-input">
-          <a-input-number
-            v-model="form.minSafetyFactor"
-            :min="1"
-            :max="3"
-            :step="0.1"
-            class="algo-input-inner"
-            placeholder="如 1.2"
-          />
-        </div>
-      </div>
-      <div class="algo-row">
-        <label class="algo-label"></label>
-        <div class="algo-input">
-          <a-button type="primary" :loading="scanLoading" icon="search" @click="runScan">执行扫描</a-button>
-        </div>
-      </div>
 
-      <a-divider v-if="scanResult">扫描结果</a-divider>
-      <template v-if="scanResult">
-        <a-alert
-          :message="`最小距离：${scanResult.minDistance} m | 风险等级：${scanResult.riskLevel} | 最近点深度：${scanResult.nearestDepth} m`"
-          :type="scanResult.riskLevel === '安全' ? 'success' : scanResult.riskLevel === '预警' ? 'warning' : 'error'"
-          show-icon
-          style="margin-bottom: 16px"
-        />
-        <a-table
-          :columns="resultColumns"
-          :data-source="scanResult.segments"
-          :pagination="false"
-          size="small"
-          row-key="segment"
-        >
-          <span slot="risk" slot-scope="text">
-            <a-tag :color="text === '安全' ? 'green' : text === '预警' ? 'orange' : 'red'">{{ text }}</a-tag>
-          </span>
-        </a-table>
-        <div style="margin-top: 16px">
-          <a-button icon="file-pdf" @click="exportReport">导出防碰扫描报告</a-button>
-        </div>
+    <!-- 评估标签页 -->
+    <a-card :bordered="false" class="evaluation-tabs">
+      <a-tabs v-model:activeKey="activeTab" class="evaluation-tabs-inner">
+        <a-tab-pane key="anticollision" tab="防碰扫描">
+          <a-card :bordered="false" class="scan-form">
+            <div class="algo-row">
+              <label class="algo-label">井场：</label>
+              <div class="algo-input">
+                <a-select v-model="form.siteId" placeholder="请选择井场" class="algo-input-inner" @change="onSiteChange">
+                  <a-select-option v-for="site in siteList" :key="site.id" :value="site.id">{{ site.name }}</a-select-option>
+                </a-select>
+              </div>
+            </div>
+            <div class="algo-row">
+              <label class="algo-label">待扫描轨迹（待钻井）：</label>
+              <div class="algo-input">
+                <a-select v-model="form.trajectoryId" placeholder="请先选择井场" class="algo-input-inner algo-input-full" :disabled="!form.siteId">
+                  <a-select-option v-for="well in availableWells" :key="well.id" :value="well.id">{{ well.wellNo }} - {{ well.name }}</a-select-option>
+                </a-select>
+              </div>
+            </div>
+            <div class="algo-row">
+              <label class="algo-label">邻井（多选）：</label>
+              <div class="algo-input">
+                <a-select
+                  v-model="form.neighborWellIds"
+                  mode="multiple"
+                  placeholder="请先选择井场"
+                  class="algo-input-inner algo-input-full"
+                  :disabled="!form.siteId"
+                >
+                  <a-select-option v-for="w in neighborWellOptions" :key="w.id" :value="w.id">{{ w.name }} ({{ w.wellNo }})</a-select-option>
+                </a-select>
+              </div>
+            </div>
+            <div class="algo-row">
+              <label class="algo-label">防碰分析方法：</label>
+              <div class="algo-input">
+                <a-select v-model="form.anticollisionMethod" placeholder="请选择" class="algo-input-inner">
+                  <a-select-option value="CTC">CTC 井眼中心距法</a-select-option>
+                  <a-select-option value="SF">SF 分离系数法</a-select-option>
+                </a-select>
+              </div>
+            </div>
+            <div v-if="form.anticollisionMethod === 'CTC'" class="algo-row">
+              <label class="algo-label">最小安全半径(m)：</label>
+              <div class="algo-input">
+                <a-input-number v-model="form.safeRadius" :min="1" :max="50" class="algo-input-inner" placeholder="如 10" />
+              </div>
+            </div>
+            <div v-else class="algo-row">
+              <label class="algo-label">最小 SF：</label>
+              <div class="algo-input">
+                <a-input-number
+                  v-model="form.minSafetyFactor"
+                  :min="1"
+                  :max="3"
+                  :step="0.1"
+                  class="algo-input-inner"
+                  placeholder="如 1.2"
+                />
+              </div>
+            </div>
+            <div class="algo-row">
+              <label class="algo-label"></label>
+              <div class="algo-input">
+                <a-button type="primary" :loading="scanLoading" icon="search" @click="runScan">执行扫描</a-button>
+              </div>
+            </div>
 
-        <!-- 防碰 3D 可视化（可拖动旋转视角） -->
-        <div class="viz-section">
-          <a-divider orientation="left">防碰 3D 可视化（可拖动旋转视角）</a-divider>
-          <div v-if="viz3dError" class="viz-error">{{ viz3dError }}</div>
-          <div v-else ref="chart3dContainer" class="chart3d-container" />
-        </div>
-      </template>
+            <a-divider v-if="scanResult">扫描结果</a-divider>
+            <template v-if="scanResult">
+              <a-alert
+                :message="resultAlertMessage"
+                :type="scanResult.riskLevel === '安全' ? 'success' : scanResult.riskLevel === '预警' ? 'warning' : 'error'"
+                show-icon
+                style="margin-bottom: 16px"
+              />
+              <a-table
+                :columns="resultColumns"
+                :data-source="scanResult.segments"
+                :pagination="false"
+                size="small"
+                row-key="segment"
+              >
+                <span slot="risk" slot-scope="text">
+                  <a-tag :color="text === '安全' ? 'green' : text === '预警' ? 'orange' : 'red'">{{ text }}</a-tag>
+                </span>
+              </a-table>
+              <div style="margin-top: 16px">
+                <a-button icon="file-pdf" @click="exportReport">导出防碰扫描报告</a-button>
+              </div>
+
+              <div class="viz-section">
+                <a-divider orientation="left">防碰 3D 可视化（可拖动旋转视角）</a-divider>
+                <div v-if="viz3dError" class="viz-error">{{ viz3dError }}</div>
+                <div v-else ref="chart3dContainer" class="chart3d-container" />
+              </div>
+            </template>
+          </a-card>
+        </a-tab-pane>
+        <a-tab-pane key="trajectory" tab="轨迹质量评估">
+          <a-card :bordered="false" class="quality-form">
+            <div class="algo-row">
+              <label class="algo-label">待评估轨迹：</label>
+              <div class="algo-input">
+                <a-select v-model="qualityForm.trajectoryId" placeholder="请选择轨迹" class="algo-input-inner algo-input-full">
+                  <a-select-option v-for="well in availableWells" :key="well.id" :value="well.id">{{ well.wellNo }} - {{ well.name }}</a-select-option>
+                </a-select>
+              </div>
+            </div>
+            <div class="algo-row">
+              <label class="algo-label"></label>
+              <div class="algo-input">
+                <a-button type="primary" :loading="qualityLoading" icon="check-circle" @click="runQualityEvaluation">执行评估</a-button>
+              </div>
+            </div>
+            <a-divider v-if="qualityResult">评估结果</a-divider>
+            <template v-if="qualityResult">
+              <a-descriptions :column="2" bordered>
+                <a-descriptions-item label="总狗腿度">
+                  <a-tag :color="qualityResult.doglegScore >= 80 ? 'green' : qualityResult.doglegScore >= 60 ? 'orange' : 'red'">
+                    {{ qualityResult.doglegScore }}分
+                  </a-tag>
+                </a-descriptions-item>
+                <a-descriptions-item label="井眼平滑度">
+                  <a-tag :color="qualityResult.smoothScore >= 80 ? 'green' : qualityResult.smoothScore >= 60 ? 'orange' : 'red'">
+                    {{ qualityResult.smoothScore }}分
+                  </a-tag>
+                </a-descriptions-item>
+                <a-descriptions-item label="靶点命中率">
+                  <a-tag :color="qualityResult.targetScore >= 80 ? 'green' : qualityResult.targetScore >= 60 ? 'orange' : 'red'">
+                    {{ qualityResult.targetScore }}分
+                  </a-tag>
+                </a-descriptions-item>
+                <a-descriptions-item label="综合评分">
+                  <a-tag :color="qualityResult.totalScore >= 80 ? 'green' : qualityResult.totalScore >= 60 ? 'orange' : 'red'">
+                    {{ qualityResult.totalScore }}分
+                  </a-tag>
+                </a-descriptions-item>
+              </a-descriptions>
+            </template>
+          </a-card>
+        </a-tab-pane>
+        <a-tab-pane key="economic" tab="经济效益评估">
+          <a-card :bordered="false" class="economic-form">
+            <div class="algo-row">
+              <label class="algo-label">待评估轨迹：</label>
+              <div class="algo-input">
+                <a-select v-model="economicForm.trajectoryId" placeholder="请选择轨迹" class="algo-input-inner algo-input-full">
+                  <a-select-option v-for="well in availableWells" :key="well.id" :value="well.id">{{ well.wellNo }} - {{ well.name }}</a-select-option>
+                </a-select>
+              </div>
+            </div>
+            <div class="algo-row">
+              <label class="algo-label"></label>
+              <div class="algo-input">
+                <a-button type="primary" :loading="economicLoading" icon="dollar" @click="runEconomicEvaluation">执行评估</a-button>
+              </div>
+            </div>
+            <a-divider v-if="economicResult">评估结果</a-divider>
+            <template v-if="economicResult">
+              <a-descriptions :column="2" bordered>
+                <a-descriptions-item label="预估钻井成本">¥ {{ economicResult.cost.toLocaleString() }}</a-descriptions-item>
+                <a-descriptions-item label="预期产量">{{ economicResult.production }} 吨/日</a-descriptions-item>
+                <a-descriptions-item label="投资回报率">{{ economicResult.roi }}%</a-descriptions-item>
+                <a-descriptions-item label="回收期">{{ economicResult.paybackPeriod }} 月</a-descriptions-item>
+              </a-descriptions>
+            </template>
+          </a-card>
+        </a-tab-pane>
+      </a-tabs>
     </a-card>
   </page-header-wrapper>
 </template>
@@ -100,33 +184,9 @@
 import * as echarts from 'echarts'
 import 'echarts-gl'
 import * as XLSXModule from 'xlsx'
+import { drillingAPI } from '@/api'
 
 const XLSX = XLSXModule.default || XLSXModule
-
-// 邻井需含井口坐标用于轨迹 E,N,D 转换
-const MOCK_NEIGHBOR_WELLS = [
-  { id: 'n1', name: '41-37YH3', wellNo: '41-37YH3', wellheadE: 208, wellheadN: 2015, wellheadD: 0 },
-  { id: 'n2', name: '41-37YH5', wellNo: '41-37YH5', wellheadE: 209, wellheadN: 2000, wellheadD: 0 },
-  { id: 'n3', name: '41-38YH1', wellNo: '41-38YH1', wellheadE: 220, wellheadN: 2025, wellheadD: 0 }
-]
-// 待扫描轨迹 id -> 井号（用于从 public 拉取 xlsx）及井口
-const DESIGN_TRAJECTORY_MAP = {
-  design_1: { wellNo: '41-37YH3', wellheadE: 222, wellheadN: 2030, wellheadD: 0 },
-  design_2: { wellNo: '41-38YH1', wellheadE: 220, wellheadN: 2025, wellheadD: 0 }
-}
-const MOCK_SCAN_RESULT = {
-  minDistance: 12.5,
-  riskLevel: '安全',
-  nearestDepth: 1850,
-  nearestPoint: { e: 350, n: 2100, d: 1850 },
-  segments: [
-    { segment: '0-500m', minDist: 120, risk: '安全' },
-    { segment: '500-1000m', minDist: 85, risk: '安全' },
-    { segment: '1000-1500m', minDist: 45, risk: '安全' },
-    { segment: '1500-2000m', minDist: 15, risk: '预警' },
-    { segment: '2000-2500m', minDist: 28, risk: '安全' }
-  ]
-}
 
 function minimumCurvatureToEND (rows, wellhead) {
   const [x0, y0, z0] = wellhead
@@ -157,27 +217,62 @@ function minimumCurvatureToEND (rows, wellhead) {
 }
 
 export default {
-  name: 'AnticollisionScan',
+  name: 'TrajectoryEvaluation',
   data () {
     return {
+      activeTab: 'anticollision',
+      siteList: [],
+      wellList: [],
       form: {
+        siteId: undefined,
         trajectoryId: undefined,
         neighborWellIds: [],
         anticollisionMethod: 'SF',
         safeRadius: 10,
         minSafetyFactor: 1.2
       },
-      neighborWells: MOCK_NEIGHBOR_WELLS,
+      qualityForm: {
+        trajectoryId: undefined
+      },
+      economicForm: {
+        trajectoryId: undefined
+      },
       scanLoading: false,
       scanResult: null,
       viz3dError: '',
       chart3d: null,
+      qualityLoading: false,
+      qualityResult: null,
+      economicLoading: false,
+      economicResult: null,
       resultColumns: [
         { title: '井段', dataIndex: 'segment', key: 'segment' },
         { title: '最小距离(m)', dataIndex: 'minDist', key: 'minDist' },
+        { title: '最小SF', dataIndex: 'minSF', key: 'minSF' },
         { title: '风险等级', dataIndex: 'risk', key: 'risk', scopedSlots: { customRender: 'risk' } }
       ]
     }
+  },
+  computed: {
+    availableWells () {
+      if (!this.form.siteId) return []
+      return this.wellList.filter(w => w.siteId === this.form.siteId && w.type === 'planned')
+    },
+    neighborWellOptions () {
+      if (!this.form.siteId) return []
+      return this.wellList.filter(w => w.siteId === this.form.siteId && w.type === 'existing')
+    },
+    resultAlertMessage () {
+      if (!this.scanResult) return ''
+      if (this.form.anticollisionMethod === 'CTC') {
+        return `最小井眼中心距：${this.scanResult.minDistance} m | 风险等级：${this.scanResult.riskLevel} | 最近点深度：${this.scanResult.nearestDepth} m`
+      } else {
+        return `最小SF：${this.scanResult.minSafetyFactor} | 风险等级：${this.scanResult.riskLevel} | 最近点深度：${this.scanResult.nearestDepth} m`
+      }
+    }
+  },
+  created () {
+    this.loadSiteList()
   },
   beforeDestroy () {
     if (this.chart3d) {
@@ -186,9 +281,63 @@ export default {
     }
   },
   methods: {
-    runScan () {
-      if (!this.form.trajectoryId || !this.form.neighborWellIds.length) {
-        this.$message.warning('请选择待扫描轨迹和至少一口邻井')
+    normalizeListResponse (res) {
+      if (Array.isArray(res)) return res
+      if (res && Array.isArray(res.data)) return res.data
+      return []
+    },
+    async loadSiteList () {
+      try {
+        const res = await drillingAPI.getSiteList()
+        this.siteList = this.normalizeListResponse(res)
+      } catch (e) {
+        console.error('加载井场列表失败:', e)
+        this.$message.error('加载井场失败：' + (e.message || '未知错误'))
+      }
+    },
+    async loadWellsBySite (siteId) {
+      try {
+        const [existingRes, pendingRes] = await Promise.all([
+          drillingAPI.getWellsBySite(siteId),
+          drillingAPI.getPendingDrillWellsBySite(siteId)
+        ])
+        const existingWells = this.normalizeListResponse(existingRes).map(w => ({
+          id: w.id,
+          siteId: w.siteId,
+          wellNo: w.wellNo,
+          name: w.name,
+          wellheadE: w.wellheadE,
+          wellheadN: w.wellheadN,
+          wellheadD: w.wellheadD,
+          type: 'existing'
+        }))
+        const pendingWells = this.normalizeListResponse(pendingRes).map(w => ({
+          id: w.id,
+          siteId: w.siteId,
+          wellNo: w.wellNo,
+          name: w.name,
+          wellheadE: w.wellheadE,
+          wellheadN: w.wellheadN,
+          wellheadD: w.wellheadD,
+          type: 'planned'
+        }))
+        this.wellList = [...existingWells, ...pendingWells]
+      } catch (e) {
+        console.error('加载井列表失败:', e)
+        this.$message.error('加载井列表失败：' + (e.message || '未知错误'))
+      }
+    },
+    onSiteChange () {
+      this.form.trajectoryId = undefined
+      this.form.neighborWellIds = []
+      this.scanResult = null
+      if (this.form.siteId) {
+        this.loadWellsBySite(this.form.siteId)
+      }
+    },
+    async runScan () {
+      if (!this.form.siteId || !this.form.trajectoryId || !this.form.neighborWellIds.length) {
+        this.$message.warning('请选择井场、待扫描轨迹和至少一口邻井')
         return
       }
       this.scanLoading = true
@@ -198,12 +347,64 @@ export default {
         this.chart3d.dispose()
         this.chart3d = null
       }
-      setTimeout(() => {
-        this.scanResult = { ...MOCK_SCAN_RESULT }
+      try {
+        const params = {
+          siteId: this.form.siteId,
+          trajectoryId: this.form.trajectoryId,
+          neighborWellIds: this.form.neighborWellIds.map(id => Number(id)),
+          anticollisionMethod: this.form.anticollisionMethod,
+          safeRadius: this.form.safeRadius,
+          minSafetyFactor: this.form.minSafetyFactor
+        }
+        const res = await drillingAPI.anticollisionScan(params)
+        console.log('扫描结果:', res)
+        if (res) {
+          this.scanResult = res.data || res
+          this.$message.success('扫描完成')
+          this.$nextTick(() => this.renderTrajectoryChart())
+        } else {
+          this.$message.error('扫描结果为空')
+        }
+      } catch (e) {
+        console.error('防碰扫描失败:', e)
+        this.$message.error('防碰扫描失败: ' + (e.message || '未知错误'))
+      } finally {
         this.scanLoading = false
-        this.$message.success('扫描完成')
-        this.$nextTick(() => this.loadTrajectoriesAndRender3D())
-      }, 1200)
+      }
+    },
+    runQualityEvaluation () {
+      if (!this.qualityForm.trajectoryId) {
+        this.$message.warning('请选择待评估轨迹')
+        return
+      }
+      this.qualityLoading = true
+      setTimeout(() => {
+        this.qualityResult = {
+          doglegScore: 85,
+          smoothScore: 92,
+          targetScore: 88,
+          totalScore: 88
+        }
+        this.qualityLoading = false
+        this.$message.success('评估完成')
+      }, 1000)
+    },
+    runEconomicEvaluation () {
+      if (!this.economicForm.trajectoryId) {
+        this.$message.warning('请选择待评估轨迹')
+        return
+      }
+      this.economicLoading = true
+      setTimeout(() => {
+        this.economicResult = {
+          cost: 12500000,
+          production: 500,
+          roi: 28.5,
+          paybackPeriod: 36
+        }
+        this.economicLoading = false
+        this.$message.success('评估完成')
+      }, 1000)
     },
     exportReport () {
       this.$message.success('防碰扫描报告导出中（模拟 PDF/Word）')
@@ -235,63 +436,37 @@ export default {
       })
       return p
     },
-    loadTrajectoriesAndRender3D () {
+    renderTrajectoryChart () {
       const el = this.$refs.chart3dContainer
       if (!el) return
-      this.viz3dError = ''
-      const designInfo = DESIGN_TRAJECTORY_MAP[this.form.trajectoryId]
-      if (!designInfo) {
-        this.viz3dError = '当前选择的轨迹暂无轨迹文件，无法加载 3D。请选择「最近设计」或「设计：41-38YH1」或对接后端轨迹接口。'
+      if (!this.scanResult || !this.scanResult.trajectories) {
+        this.viz3dError = '没有轨迹数据'
         return
       }
-      const neighborList = this.neighborWells.filter(w => this.form.neighborWellIds.includes(w.id))
-      const loadDesign = this.fetchXlsx(designInfo.wellNo)
-        .then(buf => this.parseExcelToPoints(buf, designInfo))
-        .then(points => ({ wellNo: designInfo.wellNo + '（待扫描）', points }))
-        .catch(() => null)
-      const loadNeighbors = Promise.all(
-        neighborList.map(w =>
-          this.fetchXlsx(w.wellNo)
-            .then(buf => this.parseExcelToPoints(buf, w))
-            .then(points => ({ wellNo: w.wellNo, points }))
-            .catch(() => null)
-        )
-      )
-      Promise.all([loadDesign, loadNeighbors])
-        .then(([designSeries, neighborResults]) => {
-          const list = []
-          if (designSeries && designSeries.points && designSeries.points.length) list.push(designSeries)
-          neighborResults.forEach(r => { if (r && r.points && r.points.length) list.push(r) })
-          if (!list.length) {
-            this.viz3dError = '未加载到轨迹数据。请将对应井号 xlsx（如 41-37YH3.xlsx）放入 public 或 optimization 目录。'
-            return
-          }
-          this.render3DChart(list)
-        })
-        .catch(() => {
-          this.viz3dError = '加载轨迹文件失败'
-        })
-    },
-    render3DChart (seriesList) {
-      const el = this.$refs.chart3dContainer
-      if (!el) return
+      this.viz3dError = ''
       if (this.chart3d) this.chart3d.dispose()
       this.chart3d = echarts.init(el)
+
+      const trajectories = this.scanResult.trajectories
       const colors = ['#1890ff', '#52c41a', '#fa8c16', '#eb2f96', '#722ed1', '#13c2c2', '#faad14', '#f5222d']
-      const series = seriesList.map((item, i) => {
+
+      const series = trajectories.map((traj, i) => {
         const color = colors[i % colors.length]
-        const data = item.points.map(p => [p[0], p[1], -p[2]])
+        const points = traj.trajectory_points || []
+        const data = points.map(p => [p.x || p.e || 0, p.y || p.n || 0, -(p.z || p.d || 0)])
         return {
           type: 'line3D',
-          name: item.wellNo,
+          name: traj.wellName || traj.wellNo || '井' + (i + 1),
           data,
-          lineStyle: { width: 3, color },
+          lineStyle: { width: i === 0 ? 4 : 2, color, opacity: i === 0 ? 1 : 0.7 },
           itemStyle: { opacity: 0.8 }
         }
       })
+
+      const legendData = trajectories.map(t => t.wellName || t.wellNo || '井' + (trajectories.indexOf(t) + 1))
       const option = {
         tooltip: {},
-        legend: { data: seriesList.map(s => s.wellNo), bottom: 0 },
+        legend: { data: legendData, bottom: 0 },
         backgroundColor: '#fff',
         xAxis3D: { type: 'value', name: 'E' },
         yAxis3D: { type: 'value', name: 'N' },
@@ -309,31 +484,46 @@ export default {
 </script>
 
 <style lang="less" scoped>
-/* 与轨迹设计一致的左侧 label + 右侧输入 */
-.scan-form .algo-row {
+.evaluation-tabs {
+  margin-top: 16px;
+}
+.evaluation-tabs-inner {
+  margin-top: -16px;
+}
+.scan-form .algo-row,
+.quality-form .algo-row,
+.economic-form .algo-row {
   display: flex;
   align-items: center;
   margin-bottom: 16px;
 }
-.scan-form .algo-label {
+.scan-form .algo-label,
+.quality-form .algo-label,
+.economic-form .algo-label {
   flex-shrink: 0;
   min-width: 180px;
   margin: 0;
   font-weight: normal;
   color: rgba(0, 0, 0, 0.85);
 }
-.scan-form .algo-input {
+.scan-form .algo-input,
+.quality-form .algo-input,
+.economic-form .algo-input {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
 }
-.scan-form .algo-input-inner {
+.scan-form .algo-input-inner,
+.quality-form .algo-input-inner,
+.economic-form .algo-input-inner {
   width: 100%;
   max-width: 280px;
 }
-.scan-form .algo-input-inner.algo-input-full {
+.scan-form .algo-input-inner.algo-input-full,
+.quality-form .algo-input-inner.algo-input-full,
+.economic-form .algo-input-inner.algo-input-full {
   max-width: none;
 }
 .viz-section { margin-top: 24px; }
