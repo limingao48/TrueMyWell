@@ -20,7 +20,7 @@
             <div class="algo-row">
               <label class="algo-label">待扫描轨迹（待钻井）：</label>
               <div class="algo-input">
-                <a-select v-model="form.trajectoryId" placeholder="请先选择井场" class="algo-input-inner algo-input-full" :disabled="!form.siteId">
+                <a-select v-model="form.trajectoryId" placeholder="请先选择井场" class="algo-input-inner" :disabled="!form.siteId">
                   <a-select-option v-for="well in availableWells" :key="well.id" :value="well.id">{{ well.wellNo }} - {{ well.name }}</a-select-option>
                 </a-select>
               </div>
@@ -32,7 +32,7 @@
                   v-model="form.neighborWellIds"
                   mode="multiple"
                   placeholder="请先选择井场"
-                  class="algo-input-inner algo-input-full"
+                  class="algo-input-inner"
                   :disabled="!form.siteId"
                 >
                   <a-select-option v-for="w in neighborWellOptions" :key="w.id" :value="w.id">{{ w.name }} ({{ w.wellNo }})</a-select-option>
@@ -83,7 +83,7 @@
                 style="margin-bottom: 16px"
               />
               <a-table
-                :columns="resultColumns"
+                :columns="scanColumns[form.anticollisionMethod]"
                 :data-source="scanResult.segments"
                 :pagination="false"
                 size="small"
@@ -105,12 +105,20 @@
             </template>
           </a-card>
         </a-tab-pane>
-        <a-tab-pane key="trajectory" tab="轨迹质量评估">
+        <a-tab-pane key="trajectory" tab="井眼轨迹综合评估">
           <a-card :bordered="false" class="quality-form">
+            <div class="algo-row">
+              <label class="algo-label">井场：</label>
+              <div class="algo-input">
+                <a-select v-model="form.siteId" placeholder="请选择井场" class="algo-input-inner algo-input-full" @change="onSiteChange">
+                  <a-select-option v-for="site in siteList" :key="site.id" :value="site.id">{{ site.name }}</a-select-option>
+                </a-select>
+              </div>
+            </div>
             <div class="algo-row">
               <label class="algo-label">待评估轨迹：</label>
               <div class="algo-input">
-                <a-select v-model="qualityForm.trajectoryId" placeholder="请选择轨迹" class="algo-input-inner algo-input-full">
+                <a-select v-model="qualityForm.trajectoryId" placeholder="请先选择井场" class="algo-input-inner algo-input-full" :disabled="!form.siteId">
                   <a-select-option v-for="well in availableWells" :key="well.id" :value="well.id">{{ well.wellNo }} - {{ well.name }}</a-select-option>
                 </a-select>
               </div>
@@ -144,33 +152,6 @@
                     {{ qualityResult.totalScore }}分
                   </a-tag>
                 </a-descriptions-item>
-              </a-descriptions>
-            </template>
-          </a-card>
-        </a-tab-pane>
-        <a-tab-pane key="economic" tab="经济效益评估">
-          <a-card :bordered="false" class="economic-form">
-            <div class="algo-row">
-              <label class="algo-label">待评估轨迹：</label>
-              <div class="algo-input">
-                <a-select v-model="economicForm.trajectoryId" placeholder="请选择轨迹" class="algo-input-inner algo-input-full">
-                  <a-select-option v-for="well in availableWells" :key="well.id" :value="well.id">{{ well.wellNo }} - {{ well.name }}</a-select-option>
-                </a-select>
-              </div>
-            </div>
-            <div class="algo-row">
-              <label class="algo-label"></label>
-              <div class="algo-input">
-                <a-button type="primary" :loading="economicLoading" icon="dollar" @click="runEconomicEvaluation">执行评估</a-button>
-              </div>
-            </div>
-            <a-divider v-if="economicResult">评估结果</a-divider>
-            <template v-if="economicResult">
-              <a-descriptions :column="2" bordered>
-                <a-descriptions-item label="预估钻井成本">¥ {{ economicResult.cost.toLocaleString() }}</a-descriptions-item>
-                <a-descriptions-item label="预期产量">{{ economicResult.production }} 吨/日</a-descriptions-item>
-                <a-descriptions-item label="投资回报率">{{ economicResult.roi }}%</a-descriptions-item>
-                <a-descriptions-item label="回收期">{{ economicResult.paybackPeriod }} 月</a-descriptions-item>
               </a-descriptions>
             </template>
           </a-card>
@@ -234,23 +215,25 @@ export default {
       qualityForm: {
         trajectoryId: undefined
       },
-      economicForm: {
-        trajectoryId: undefined
-      },
+
       scanLoading: false,
       scanResult: null,
       viz3dError: '',
       chart3d: null,
       qualityLoading: false,
       qualityResult: null,
-      economicLoading: false,
-      economicResult: null,
-      resultColumns: [
-        { title: '井段', dataIndex: 'segment', key: 'segment' },
-        { title: '最小距离(m)', dataIndex: 'minDist', key: 'minDist' },
-        { title: '最小SF', dataIndex: 'minSF', key: 'minSF' },
-        { title: '风险等级', dataIndex: 'risk', key: 'risk', scopedSlots: { customRender: 'risk' } }
-      ]
+      scanColumns: {
+        CTC: [
+          { title: '井段', dataIndex: 'segment', key: 'segment' },
+          { title: '最小距离(m)', dataIndex: 'minDist', key: 'minDist' },
+          { title: '风险等级', dataIndex: 'risk', key: 'risk', scopedSlots: { customRender: 'risk' } }
+        ],
+        SF: [
+          { title: '井段', dataIndex: 'segment', key: 'segment' },
+          { title: '最小SF', dataIndex: 'minSF', key: 'minSF' },
+          { title: '风险等级', dataIndex: 'risk', key: 'risk', scopedSlots: { customRender: 'risk' } }
+        ]
+      }
     }
   },
   computed: {
@@ -389,23 +372,6 @@ export default {
         this.$message.success('评估完成')
       }, 1000)
     },
-    runEconomicEvaluation () {
-      if (!this.economicForm.trajectoryId) {
-        this.$message.warning('请选择待评估轨迹')
-        return
-      }
-      this.economicLoading = true
-      setTimeout(() => {
-        this.economicResult = {
-          cost: 12500000,
-          production: 500,
-          roi: 28.5,
-          paybackPeriod: 36
-        }
-        this.economicLoading = false
-        this.$message.success('评估完成')
-      }, 1000)
-    },
     exportReport () {
       this.$message.success('防碰扫描报告导出中（模拟 PDF/Word）')
     },
@@ -491,15 +457,13 @@ export default {
   margin-top: -16px;
 }
 .scan-form .algo-row,
-.quality-form .algo-row,
-.economic-form .algo-row {
+.quality-form .algo-row {
   display: flex;
   align-items: center;
   margin-bottom: 16px;
 }
 .scan-form .algo-label,
-.quality-form .algo-label,
-.economic-form .algo-label {
+.quality-form .algo-label {
   flex-shrink: 0;
   min-width: 180px;
   margin: 0;
@@ -507,8 +471,7 @@ export default {
   color: rgba(0, 0, 0, 0.85);
 }
 .scan-form .algo-input,
-.quality-form .algo-input,
-.economic-form .algo-input {
+.quality-form .algo-input {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -516,14 +479,12 @@ export default {
   flex-wrap: wrap;
 }
 .scan-form .algo-input-inner,
-.quality-form .algo-input-inner,
-.economic-form .algo-input-inner {
+.quality-form .algo-input-inner {
   width: 100%;
   max-width: 280px;
 }
 .scan-form .algo-input-inner.algo-input-full,
-.quality-form .algo-input-inner.algo-input-full,
-.economic-form .algo-input-inner.algo-input-full {
+.quality-form .algo-input-inner.algo-input-full {
   max-width: none;
 }
 .viz-section { margin-top: 24px; }

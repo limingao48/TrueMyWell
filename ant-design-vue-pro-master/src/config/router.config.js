@@ -32,7 +32,7 @@ export const asyncRouterMap = [
         path: '/drilling/anticollision',
         name: 'AnticollisionScan',
         component: () => import('@/views/drilling/AnticollisionScan/index.vue'),
-        meta: { title: '防碰扫描', keepAlive: true, permission: ['dashboard'] }
+        meta: { title: '轨迹评估', keepAlive: true, permission: ['dashboard'] }
       }
       // dashboard
       // {
