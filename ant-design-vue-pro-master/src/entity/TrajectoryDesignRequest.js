@@ -48,7 +48,8 @@ export default class TrajectoryDesignRequest {
         doglegMin: a.doglegMin,
         doglegMax: a.doglegMax,
         population: a.population,
-        iterations: a.iterations
+        iterations: a.iterations,
+        maxEvaluations: a.maxEvaluations
       }
     }
   }

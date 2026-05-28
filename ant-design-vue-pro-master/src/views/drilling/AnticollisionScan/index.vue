@@ -106,55 +106,7 @@
           </a-card>
         </a-tab-pane>
         <a-tab-pane key="trajectory" tab="井眼轨迹综合评估">
-          <a-card :bordered="false" class="quality-form">
-            <div class="algo-row">
-              <label class="algo-label">井场：</label>
-              <div class="algo-input">
-                <a-select v-model="form.siteId" placeholder="请选择井场" class="algo-input-inner algo-input-full" @change="onSiteChange">
-                  <a-select-option v-for="site in siteList" :key="site.id" :value="site.id">{{ site.name }}</a-select-option>
-                </a-select>
-              </div>
-            </div>
-            <div class="algo-row">
-              <label class="algo-label">待评估轨迹：</label>
-              <div class="algo-input">
-                <a-select v-model="qualityForm.trajectoryId" placeholder="请先选择井场" class="algo-input-inner algo-input-full" :disabled="!form.siteId">
-                  <a-select-option v-for="well in availableWells" :key="well.id" :value="well.id">{{ well.wellNo }} - {{ well.name }}</a-select-option>
-                </a-select>
-              </div>
-            </div>
-            <div class="algo-row">
-              <label class="algo-label"></label>
-              <div class="algo-input">
-                <a-button type="primary" :loading="qualityLoading" icon="check-circle" @click="runQualityEvaluation">执行评估</a-button>
-              </div>
-            </div>
-            <a-divider v-if="qualityResult">评估结果</a-divider>
-            <template v-if="qualityResult">
-              <a-descriptions :column="2" bordered>
-                <a-descriptions-item label="总狗腿度">
-                  <a-tag :color="qualityResult.doglegScore >= 80 ? 'green' : qualityResult.doglegScore >= 60 ? 'orange' : 'red'">
-                    {{ qualityResult.doglegScore }}分
-                  </a-tag>
-                </a-descriptions-item>
-                <a-descriptions-item label="井眼平滑度">
-                  <a-tag :color="qualityResult.smoothScore >= 80 ? 'green' : qualityResult.smoothScore >= 60 ? 'orange' : 'red'">
-                    {{ qualityResult.smoothScore }}分
-                  </a-tag>
-                </a-descriptions-item>
-                <a-descriptions-item label="靶点命中率">
-                  <a-tag :color="qualityResult.targetScore >= 80 ? 'green' : qualityResult.targetScore >= 60 ? 'orange' : 'red'">
-                    {{ qualityResult.targetScore }}分
-                  </a-tag>
-                </a-descriptions-item>
-                <a-descriptions-item label="综合评分">
-                  <a-tag :color="qualityResult.totalScore >= 80 ? 'green' : qualityResult.totalScore >= 60 ? 'orange' : 'red'">
-                    {{ qualityResult.totalScore }}分
-                  </a-tag>
-                </a-descriptions-item>
-              </a-descriptions>
-            </template>
-          </a-card>
+          <trajectory-quality-evaluation />
         </a-tab-pane>
       </a-tabs>
     </a-card>
@@ -166,6 +118,7 @@ import * as echarts from 'echarts'
 import 'echarts-gl'
 import * as XLSXModule from 'xlsx'
 import { drillingAPI } from '@/api'
+import TrajectoryQualityEvaluation from '@/views/drilling/TrajectoryQualityEvaluation/index.vue'
 
 const XLSX = XLSXModule.default || XLSXModule
 
@@ -199,6 +152,7 @@ function minimumCurvatureToEND (rows, wellhead) {
 
 export default {
   name: 'TrajectoryEvaluation',
+  components: { TrajectoryQualityEvaluation },
   data () {
     return {
       activeTab: 'anticollision',
@@ -212,16 +166,10 @@ export default {
         safeRadius: 10,
         minSafetyFactor: 1.2
       },
-      qualityForm: {
-        trajectoryId: undefined
-      },
-
       scanLoading: false,
       scanResult: null,
       viz3dError: '',
       chart3d: null,
-      qualityLoading: false,
-      qualityResult: null,
       scanColumns: {
         CTC: [
           { title: '井段', dataIndex: 'segment', key: 'segment' },
@@ -354,23 +302,6 @@ export default {
       } finally {
         this.scanLoading = false
       }
-    },
-    runQualityEvaluation () {
-      if (!this.qualityForm.trajectoryId) {
-        this.$message.warning('请选择待评估轨迹')
-        return
-      }
-      this.qualityLoading = true
-      setTimeout(() => {
-        this.qualityResult = {
-          doglegScore: 85,
-          smoothScore: 92,
-          targetScore: 88,
-          totalScore: 88
-        }
-        this.qualityLoading = false
-        this.$message.success('评估完成')
-      }, 1000)
     },
     exportReport () {
       this.$message.success('防碰扫描报告导出中（模拟 PDF/Word）')
