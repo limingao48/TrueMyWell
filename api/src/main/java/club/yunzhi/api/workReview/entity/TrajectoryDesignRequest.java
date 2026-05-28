@@ -68,6 +68,8 @@ public class TrajectoryDesignRequest {
         private Double doglegMax;
         private Integer population;
         private Integer iterations;
+        /** GA-optiGAN：目标函数最大评估次数（max_evaluations） */
+        private Integer maxEvaluations;
         /** 可选：ISCWSA-MWD 测深 1σ (m)，缺省用后端默认 */
         private Double iscwsaSigmaMd;
         /** 可选：井斜 1σ (°) */
@@ -93,6 +95,8 @@ public class TrajectoryDesignRequest {
         public void setPopulation(Integer population) { this.population = population; }
         public Integer getIterations() { return iterations; }
         public void setIterations(Integer iterations) { this.iterations = iterations; }
+        public Integer getMaxEvaluations() { return maxEvaluations; }
+        public void setMaxEvaluations(Integer maxEvaluations) { this.maxEvaluations = maxEvaluations; }
         public Double getIscwsaSigmaMd() { return iscwsaSigmaMd; }
         public void setIscwsaSigmaMd(Double iscwsaSigmaMd) { this.iscwsaSigmaMd = iscwsaSigmaMd; }
         public Double getIscwsaSigmaIncDeg() { return iscwsaSigmaIncDeg; }

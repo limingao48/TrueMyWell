@@ -27,9 +27,12 @@ public class OptimizationTaskManager {
     private final ExecutorService executorService = Executors.newFixedThreadPool(4);
 
     private final NeighborWellTrajectoryService neighborWellTrajectoryService;
+    private final GaOptiganOptimizationService gaOptiganOptimizationService;
 
-    public OptimizationTaskManager(NeighborWellTrajectoryService neighborWellTrajectoryService) {
+    public OptimizationTaskManager(NeighborWellTrajectoryService neighborWellTrajectoryService,
+                                  GaOptiganOptimizationService gaOptiganOptimizationService) {
         this.neighborWellTrajectoryService = neighborWellTrajectoryService;
+        this.gaOptiganOptimizationService = gaOptiganOptimizationService;
     }
 
     public SseEmitter createProgressEmitter(String taskId) {
@@ -173,6 +176,15 @@ public class OptimizationTaskManager {
         config.D_kop_min = config.sevenL0Range[0];
         config.refreshLegacyEightParamBounds();
 
+        if (GaOptiganOptimizationService.isGaOptiganAlgorithm(algorithmType)) {
+            int progressTotal = iterations;
+            if (request.getAlgorithm() != null && request.getAlgorithm().getMaxEvaluations() != null
+                    && request.getAlgorithm().getMaxEvaluations() > 0) {
+                progressTotal = request.getAlgorithm().getMaxEvaluations();
+            }
+            return runGaOptiganOptimization(taskId, request, progress, progressTotal);
+        }
+
         WellTrajectoryObjective objective = new WellTrajectoryObjective(config);
         neighborWellTrajectoryService.attachObstaclesForOptimization(request, objective, config.safetyRadius);
 
@@ -223,6 +235,44 @@ public class OptimizationTaskManager {
         result.setNeighbor_wells(neighborWellTrajectoryService.loadNeighborTrajectories(request));
 
         return result;
+    }
+
+    private TrajectoryDesignResult runGaOptiganOptimization(String taskId,
+                                                            TrajectoryDesignRequest request,
+                                                            OptimizationProgress progress,
+                                                            int totalIterations) {
+        progress.setTotalIterations(totalIterations);
+        progress.setMessage("正在启动 GA-optiGAN（Python + PyTorch）...");
+        progress.setProgressPercent(1.0);
+        sendProgress(taskId, progress);
+
+        try {
+            TrajectoryDesignResult result = gaOptiganOptimizationService.runOptimization(
+                    request,
+                    (iteration, total, currentBest, message) -> {
+                        progress.setIteration(iteration);
+                        progress.setTotalIterations(total);
+                        progress.setCurrentBest(currentBest);
+                        progress.setProgressPercent(Math.min(99.0, Math.max(1.0, iteration * 100.0 / Math.max(1, total))));
+                        progress.setMessage(message);
+                        sendProgress(taskId, progress);
+                    }
+            );
+
+            progress.setIteration(totalIterations);
+            progress.setProgressPercent(100.0);
+            progress.setMessage("GA-optiGAN 优化完成");
+            if (result.getBest_solution_dict() != null && result.getFinal_deviation() != null) {
+                progress.setCurrentBest(result.getFinal_deviation());
+            }
+            sendProgress(taskId, progress);
+            return result;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("GA-optiGAN 优化被中断", e);
+        } catch (IOException e) {
+            throw new RuntimeException("GA-optiGAN 优化失败: " + e.getMessage(), e);
+        }
     }
 
     private void sendProgress(String taskId, OptimizationProgress progress) {

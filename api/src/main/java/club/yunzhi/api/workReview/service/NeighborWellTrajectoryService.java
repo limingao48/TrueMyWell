@@ -10,6 +10,9 @@ import club.yunzhi.api.workReview.trajectory.WellTrajectoryObjective;
 import club.yunzhi.api.workReview.util.ExcelParser;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -108,6 +111,77 @@ public class NeighborWellTrajectoryService {
             }
         }
         return neighborWells;
+    }
+
+    /**
+     * 将邻井轨迹 Excel 导出到临时目录，供 Python GA-optiGAN 读取。
+     */
+    public List<NeighborExcelExport> exportNeighborExcelFiles(TrajectoryDesignRequest request, Path workDir)
+            throws IOException {
+        List<NeighborExcelExport> exports = new ArrayList<>();
+        if (request.getNeighborWellIds() == null || request.getNeighborWellIds().isEmpty()) {
+            return exports;
+        }
+        Files.createDirectories(workDir);
+        for (Long wellId : request.getNeighborWellIds()) {
+            try {
+                Optional<Well> wellOpt = wellRepository.findById(wellId);
+                if (!wellOpt.isPresent()) {
+                    continue;
+                }
+                Well well = wellOpt.get();
+                Optional<club.yunzhi.api.workReview.entity.TrajectoryFile> fileOpt =
+                        trajectoryFileRepository.findFirstByWellNoOrderByIdDesc(well.getWellNo());
+                if (!fileOpt.isPresent()) {
+                    continue;
+                }
+                club.yunzhi.api.workReview.entity.TrajectoryFile trajectoryFile = fileOpt.get();
+                String safeName = trajectoryFile.getFileName();
+                if (safeName == null || safeName.trim().isEmpty()) {
+                    safeName = "neighbor_" + wellId + ".xlsx";
+                }
+                safeName = safeName.replaceAll("[\\\\/:*?\"<>|]", "_");
+                Path dest = workDir.resolve(wellId + "_" + safeName);
+                Files.write(dest, trajectoryFile.getFileContent());
+                double e = well.getWellheadE() != null ? well.getWellheadE() : 0.0;
+                double n = well.getWellheadN() != null ? well.getWellheadN() : 0.0;
+                double d = well.getWellheadD() != null ? well.getWellheadD() : 0.0;
+                exports.add(new NeighborExcelExport(dest, e, n, d));
+            } catch (Exception ignored) {
+                // 跳过无效邻井
+            }
+        }
+        return exports;
+    }
+
+    public static class NeighborExcelExport {
+        private final Path excelPath;
+        private final double wellheadE;
+        private final double wellheadN;
+        private final double wellheadD;
+
+        public NeighborExcelExport(Path excelPath, double wellheadE, double wellheadN, double wellheadD) {
+            this.excelPath = excelPath;
+            this.wellheadE = wellheadE;
+            this.wellheadN = wellheadN;
+            this.wellheadD = wellheadD;
+        }
+
+        public Path getExcelPath() {
+            return excelPath;
+        }
+
+        public double getWellheadE() {
+            return wellheadE;
+        }
+
+        public double getWellheadN() {
+            return wellheadN;
+        }
+
+        public double getWellheadD() {
+            return wellheadD;
+        }
     }
 
     static double[][] trajectoryPointsToArray(List<TrajectoryDesignResult.TrajectoryPoint> points) {

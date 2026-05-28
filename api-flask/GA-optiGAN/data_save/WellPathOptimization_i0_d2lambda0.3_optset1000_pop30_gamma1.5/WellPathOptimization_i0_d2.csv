@@ -1,0 +1,1 @@
+iter,fes,curr_bestf,bestf,time,distance_history,distance_gen,distance_train,d1_loss,d1_real,d1_fake,d1_Wdistance,d2_loss,d2_real,d2_fake,d2_Wdistance,g_loss,g_d1_loss,g_d2_loss,spread_history,spread_gen,spread_train,best_x
