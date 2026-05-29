@@ -8,7 +8,8 @@ export default class TrajectoryAlgorithm {
     doglegMin = 2,
     doglegMax = 5,
     population = 50,
-    iterations = 200
+    iterations = 200,
+    maxEvaluations = 30000
   } = {}) {
     this.type = type
     this.anticollisionMethod = anticollisionMethod
@@ -19,5 +20,6 @@ export default class TrajectoryAlgorithm {
     this.doglegMax = doglegMax
     this.population = population
     this.iterations = iterations
+    this.maxEvaluations = maxEvaluations
   }
 }

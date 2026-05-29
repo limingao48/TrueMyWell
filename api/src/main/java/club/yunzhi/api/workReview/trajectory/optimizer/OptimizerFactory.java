@@ -12,9 +12,8 @@ public class OptimizerFactory {
         OPTIMIZERS.put("L-SHADE", new LSHADEOptimizer());
         OPTIMIZERS.put("L_SHADE", new LSHADEOptimizer());
         OPTIMIZERS.put("RANDOM", new RandomSearchOptimizer());
-        // 前端暂时可选算法别名，统一收敛到可用实现
+        // B2OPT 暂用 L-SHADE 近似；GA-optiGAN 由 GaOptiganOptimizationService 调用 Python 实现
         OPTIMIZERS.put("B2OPT", new LSHADEOptimizer());
-        OPTIMIZERS.put("GA-OPTIGAN", new LSHADEOptimizer());
     }
 
     public static TrajectoryOptimizer getOptimizer(String algorithmType) {
