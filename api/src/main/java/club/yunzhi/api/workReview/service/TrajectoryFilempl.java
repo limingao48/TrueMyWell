@@ -32,7 +32,7 @@ public class TrajectoryFilempl implements TrajectoryFileService {
     private EntityManager entityManager;
 
 
-    @Value("${trajectory.file.storage.dir:/ant-design-vue-pro-master/public/trajectory}")
+    @Value("${trajectory.file.storage.dir:./ant-design-vue-pro-master/public/trajectory}")
     private String storageDir;
     private final TrajectoryFileRepository trajectoryFileRepository;
 
