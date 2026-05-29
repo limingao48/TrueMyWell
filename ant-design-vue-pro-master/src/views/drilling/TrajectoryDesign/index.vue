@@ -224,6 +224,13 @@
               </a-select>
             </div>
           </div>
+          <a-alert
+            v-if="form.algorithm.type === 'GA-optiGAN'"
+            type="info"
+            show-icon
+            class="algo-hint"
+            message="GA-optiGAN 由 Java 调用本机 Python（需 numpy、torch）。请在 optimization 目录执行 pip install -r requirements-ga-optigan.txt，并在 api/application.yml 配置 python-executable 为该解释器完整路径；可用 check_ga_optigan_env.py 自检。"
+          />
 
           <a-divider orientation="left">防碰与造斜约束</a-divider>
           <div class="algo-row">
@@ -309,7 +316,20 @@
                   />
                 </div>
               </div>
-              <div class="algo-row">
+              <div v-if="form.algorithm.type === 'GA-optiGAN'" class="algo-row">
+                <label class="algo-label">最大评估次数：</label>
+                <div class="algo-input">
+                  <a-input-number
+                    v-model="form.algorithm.maxEvaluations"
+                    :min="5000"
+                    :max="500000"
+                    :step="1000"
+                    class="algo-input-inner"
+                    placeholder="如 30000"
+                  />
+                </div>
+              </div>
+              <div v-else class="algo-row">
                 <label class="algo-label">迭代次数：</label>
                 <div class="algo-input">
                   <a-input-number
@@ -751,14 +771,14 @@ function buildPlanProjection (points, wellhead) {
 function buildVerticalSectionProjection (points, wellhead, azimuthDeg) {
   const baseE = toNumber(wellhead && wellhead.e, 0)
   const baseN = toNumber(wellhead && wellhead.n, 0)
-  const baseD = toNumber(wellhead && wellhead.d, 0)
   const azimuthRad = normalizeAzimuth(azimuthDeg) * Math.PI / 180
 
   return normalizeTrajectoryPoints(points).map((point) => {
     const deltaE = point.x - baseE
     const deltaN = point.y - baseN
     const sectionOffset = deltaE * Math.sin(azimuthRad) + deltaN * Math.cos(azimuthRad)
-    return [sectionOffset, point.z - baseD]
+    // 纵轴使用绝对垂深 D（与后端 trajectory、表单靶点垂深、测点表 TVD 一致）；横轴仍为相对设计井口的剖面位移
+    return [sectionOffset, point.z]
   })
 }
 
@@ -1111,6 +1131,7 @@ export default {
           doglegMax: 5,
           population: 50,
           iterations: 200,
+          maxEvaluations: 30000,
           safeRadius: 10
         }
       },
@@ -1333,7 +1354,9 @@ export default {
       this.resetReportAssets()
       this.progressInfo = {
         iteration: 0,
-        totalIterations: this.form.algorithm.iterations || 200,
+        totalIterations: this.form.algorithm.type === 'GA-optiGAN'
+          ? (this.form.algorithm.maxEvaluations || 30000)
+          : (this.form.algorithm.iterations || 200),
         currentBest: undefined,
         progressPercent: 0,
         message: '正在初始化优化任务...'
@@ -1367,7 +1390,9 @@ export default {
 
           this.progressInfo = {
             iteration: progress.iteration || 0,
-            totalIterations: progress.totalIterations || this.form.algorithm.iterations || 200,
+            totalIterations: progress.totalIterations || (this.form.algorithm.type === 'GA-optiGAN'
+              ? (this.form.algorithm.maxEvaluations || 30000)
+              : (this.form.algorithm.iterations || 200)),
             currentBest: progress.currentBest,
             progressPercent: progress.progressPercent || 0,
             message: progress.message || '优化进行中...'
@@ -1462,6 +1487,7 @@ export default {
       }
       this.trajectoryChart = echarts.init(this.$refs.trajectoryChart)
 
+      // 绘图第三维用 -z，垂深增大时沿 Z 轴「向下」；物理垂深 D = -Z_plot，与 E/N 数值仍同源
       const series = this.trajectorySeriesList.map((item, index) => ({
         type: 'line3D',
         name: item.name,
@@ -1516,12 +1542,9 @@ export default {
         },
         zAxis3D: {
           type: 'value',
-          name: 'D',
+          name: '垂深 D (m)',
           nameTextStyle: { fontSize: 12 },
-          axisLabel: {
-            fontSize: 10,
-            formatter: value => this.formatNumber(Math.abs(value), 0)
-          }
+          axisLabel: { fontSize: 10 }
         },
         grid3D: {
           viewControl: {
@@ -1686,7 +1709,7 @@ export default {
         },
         yAxis: {
           type: 'value',
-          name: 'True Vertical Depth [m]',
+          name: '垂深 D (m)',
           inverse: true,
           splitLine: { lineStyle: { color: '#f0f0f0' } }
         },
@@ -1694,7 +1717,7 @@ export default {
           {
             type: 'scatter',
             name: '井口',
-            data: [[0, 0]],
+            data: [[0, toNumber(this.form.wellhead.d, 0)]],
             symbolSize: 10,
             itemStyle: { color: '#2f54eb' },
             label: {
@@ -1708,7 +1731,7 @@ export default {
           {
             type: 'scatter',
             name: '靶点',
-            data: [[targetSection, toNumber(this.form.target.d, 0) - toNumber(this.form.wellhead.d, 0)]],
+            data: [[targetSection, toNumber(this.form.target.d, 0)]],
             symbolSize: 12,
             itemStyle: { color: '#cf1322' },
             label: {

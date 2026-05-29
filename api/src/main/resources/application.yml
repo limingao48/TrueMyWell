@@ -16,12 +16,24 @@ server:
   port: 8003
 file:
   upload-dir: /home/lma/ant-design-vue-pro-master
+
+# 轨迹设计：GA-optiGAN 调用 Python 脚本（相对路径以 api 模块启动目录 user.dir 为基准）
+trajectory:
+  optimization:
+    # 必须指向已安装 numpy、torch 的解释器（勿用未装依赖的 Windows Store / Python 3.14 默认 python）
+    # 示例: C:/Users/你的用户名/anaconda3/python.exe
+    python-executable: python
+    script-dir: ../ant-design-vue-pro-master/optimization
+    ga-optigan-timeout-seconds: 7200
+
+
 ---
 spring:
   config:
     activate:
       on-profile: pro
   datasource:
+
   # 3307=301=Bupt@2023 lab-bendi-3306-Bupt@2023 nodeGpu 3307:123456
     url: jdbc:mysql://127.0.0.1:3307/well?useUnicode=true&characterEncoding=utf-8&allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Shanghai
     username: root
