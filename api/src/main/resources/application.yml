@@ -21,8 +21,19 @@ trajectory:
     # 必须指向已安装 numpy、torch 的解释器（勿用未装依赖的 Windows Store / Python 3.14 默认 python）
     # 示例: C:/Users/你的用户名/anaconda3/python.exe
     python-executable: python
-    script-dir: ../ant-design-vue-pro-master/optimization
+    script-dir: ../gaoptgan
     ga-optigan-timeout-seconds: 7200
+
+# 轨迹随钻评估：TCP 端口接收实时坐标，水平偏移超阈值时外推预测
+while-drilling:
+  tcp-port: 9010
+  alert-distance-m: 30.0
+  monte-carlo-samples: 100
+  monte-carlo-stop-probability-threshold: 70.0
+  monte-carlo-comprehensive-threshold-m: 35.0
+  iscwsa-sigma-md: 0.6
+  iscwsa-sigma-inc-deg: 0.2
+  iscwsa-sigma-azi-deg: 0.3
 
 ---
 spring:

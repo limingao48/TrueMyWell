@@ -15,9 +15,9 @@ public class TrajectoryOptimizationProperties {
 
     /**
      * optimization 目录（含 run_ga_optigan_design_cli.py）。
-     * 默认：api 模块上一级下的 ant-design-vue-pro-master/optimization
+     * 默认：api 模块上一级下的 gaoptgan 独立项目
      */
-    private String scriptDir = "../ant-design-vue-pro-master/optimization";
+    private String scriptDir = "../gaoptgan";
 
     /** GA-optiGAN 单次任务超时（秒），默认 2 小时 */
     private long gaOptiganTimeoutSeconds = 7200L;

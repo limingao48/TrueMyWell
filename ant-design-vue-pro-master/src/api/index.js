@@ -41,6 +41,10 @@ const API = {
   drilling: {
     // 防碰扫描
     anticollisionScan: '/anticollision/scan',
+    // 轨迹随钻评估
+    whileDrillingSessionStart: '/whileDrilling/session/start',
+    whileDrillingSessionStop: '/whileDrilling/session/stop',
+    whileDrillingPosition: '/whileDrilling/position',
     // 井场相关
     getSiteList: '/site/getAll',
     createSite: '/site/add',
@@ -719,6 +723,30 @@ export const drillingAPI = {
   anticollisionScan (data) {
     return request({
       url: API.drilling.anticollisionScan,
+      method: 'post',
+      data
+    })
+  },
+
+  startWhileDrillingSession (data) {
+    return request({
+      url: API.drilling.whileDrillingSessionStart,
+      method: 'post',
+      data
+    })
+  },
+
+  stopWhileDrillingSession (data) {
+    return request({
+      url: API.drilling.whileDrillingSessionStop,
+      method: 'post',
+      data
+    })
+  },
+
+  submitWhileDrillingPosition (data) {
+    return request({
+      url: API.drilling.whileDrillingPosition,
       method: 'post',
       data
     })
