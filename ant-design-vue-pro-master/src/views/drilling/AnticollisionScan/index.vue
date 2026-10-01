@@ -108,6 +108,9 @@
         <a-tab-pane key="trajectory" tab="井眼轨迹综合评估">
           <trajectory-quality-evaluation />
         </a-tab-pane>
+        <a-tab-pane key="whileDrilling" tab="轨迹随钻评估">
+          <while-drilling-evaluation />
+        </a-tab-pane>
       </a-tabs>
     </a-card>
   </page-header-wrapper>
@@ -119,6 +122,7 @@ import 'echarts-gl'
 import * as XLSXModule from 'xlsx'
 import { drillingAPI } from '@/api'
 import TrajectoryQualityEvaluation from '@/views/drilling/TrajectoryQualityEvaluation/index.vue'
+import WhileDrillingEvaluation from '@/views/drilling/WhileDrillingEvaluation/index.vue'
 
 const XLSX = XLSXModule.default || XLSXModule
 
@@ -152,7 +156,7 @@ function minimumCurvatureToEND (rows, wellhead) {
 
 export default {
   name: 'TrajectoryEvaluation',
-  components: { TrajectoryQualityEvaluation },
+  components: { TrajectoryQualityEvaluation, WhileDrillingEvaluation },
   data () {
     return {
       activeTab: 'anticollision',

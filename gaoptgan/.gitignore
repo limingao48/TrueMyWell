@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+GA-optiGAN/data_save/**/*
+!GA-optiGAN/data_save/.gitkeep
